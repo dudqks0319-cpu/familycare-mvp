@@ -19,8 +19,21 @@ import {
 } from "@/lib/familycare-db";
 import { isSupabaseConfigured } from "@/lib/supabase-rest";
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function asString(value: FormDataEntryValue | null): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function asUUID(value: FormDataEntryValue | null): string {
+  const text = asString(value);
+
+  if (!UUID_REGEX.test(text)) {
+    return "";
+  }
+
+  return text;
 }
 
 function asBoolean(value: FormDataEntryValue | null): boolean {
@@ -92,7 +105,7 @@ export async function deleteRecipientAction(formData: FormData): Promise<void> {
   ensureConfigured();
 
   const session = await requireAuthSession();
-  const recipientId = asString(formData.get("recipientId"));
+  const recipientId = asUUID(formData.get("recipientId"));
 
   if (!recipientId) {
     fail("삭제할 피보호자 정보가 없습니다.");
@@ -112,13 +125,13 @@ export async function addRecipientMemberAction(
   ensureConfigured();
 
   const session = await requireAuthSession();
-  const recipientId = asString(formData.get("recipientId"));
-  const userId = asString(formData.get("userId"));
+  const recipientId = asUUID(formData.get("recipientId"));
+  const userId = asUUID(formData.get("userId"));
   const relationship = asString(formData.get("relationship"));
   const canEdit = asBoolean(formData.get("canEdit"));
 
   if (!recipientId || !userId) {
-    fail("멤버 추가에 필요한 값이 부족합니다.");
+    fail("멤버 추가에 필요한 UUID 값이 올바르지 않습니다.");
   }
 
   try {
@@ -140,12 +153,12 @@ export async function updateRecipientMemberPermissionAction(
   ensureConfigured();
 
   const session = await requireAuthSession();
-  const recipientId = asString(formData.get("recipientId"));
-  const userId = asString(formData.get("userId"));
+  const recipientId = asUUID(formData.get("recipientId"));
+  const userId = asUUID(formData.get("userId"));
   const canEdit = asBoolean(formData.get("canEdit"));
 
   if (!recipientId || !userId) {
-    fail("권한 변경에 필요한 값이 부족합니다.");
+    fail("권한 변경에 필요한 UUID 값이 올바르지 않습니다.");
   }
 
   try {
@@ -166,11 +179,11 @@ export async function removeRecipientMemberAction(
   ensureConfigured();
 
   const session = await requireAuthSession();
-  const recipientId = asString(formData.get("recipientId"));
-  const userId = asString(formData.get("userId"));
+  const recipientId = asUUID(formData.get("recipientId"));
+  const userId = asUUID(formData.get("userId"));
 
   if (!recipientId || !userId) {
-    fail("멤버 삭제에 필요한 값이 부족합니다.");
+    fail("멤버 삭제에 필요한 UUID 값이 올바르지 않습니다.");
   }
 
   if (userId === session.userId) {
@@ -194,7 +207,7 @@ export async function createMedicationScheduleAction(
   ensureConfigured();
 
   const session = await requireAuthSession();
-  const recipientId = asString(formData.get("recipientId"));
+  const recipientId = asUUID(formData.get("recipientId"));
   const medicationName = asString(formData.get("medicationName"));
   const dosage = asString(formData.get("dosage"));
   const timesPerDay = asPositiveInt(formData.get("timesPerDay"));
@@ -224,11 +237,11 @@ export async function toggleMedicationScheduleAction(
   ensureConfigured();
 
   const session = await requireAuthSession();
-  const medicationScheduleId = asString(formData.get("medicationScheduleId"));
+  const medicationScheduleId = asUUID(formData.get("medicationScheduleId"));
   const isActive = asBoolean(formData.get("isActive"));
 
   if (!medicationScheduleId) {
-    fail("복약 일정 ID가 없습니다.");
+    fail("복약 일정 ID 형식이 올바르지 않습니다.");
   }
 
   try {
@@ -252,13 +265,20 @@ export async function createMedicationLogAction(
   ensureConfigured();
 
   const session = await requireAuthSession();
-  const recipientId = asString(formData.get("recipientId"));
-  const scheduleId = asString(formData.get("scheduleId"));
+  const recipientId = asUUID(formData.get("recipientId"));
+  const rawScheduleId = asString(formData.get("scheduleId"));
+  const scheduleId = rawScheduleId
+    ? asUUID(formData.get("scheduleId"))
+    : undefined;
   const statusValue = asString(formData.get("status"));
   const memo = asString(formData.get("memo"));
 
   if (!recipientId) {
-    fail("복약 기록 대상이 없습니다.");
+    fail("복약 기록 대상 UUID가 올바르지 않습니다.");
+  }
+
+  if (rawScheduleId && !scheduleId) {
+    fail("복약 일정 UUID 형식이 올바르지 않습니다.");
   }
 
   if (statusValue !== "taken" && statusValue !== "skipped") {
@@ -284,12 +304,12 @@ export async function createCheckinAction(formData: FormData): Promise<void> {
   ensureConfigured();
 
   const session = await requireAuthSession();
-  const recipientId = asString(formData.get("recipientId"));
+  const recipientId = asUUID(formData.get("recipientId"));
   const statusValue = asString(formData.get("status"));
   const memo = asString(formData.get("memo"));
 
   if (!recipientId) {
-    fail("체크인 대상이 없습니다.");
+    fail("체크인 대상 UUID가 올바르지 않습니다.");
   }
 
   if (!["ok", "warning", "critical"].includes(statusValue)) {

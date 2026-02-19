@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import {
   clearAuthSessionCookie,
+  getAuthSessionFromCookie,
   setAuthSessionCookie,
 } from "@/lib/auth-session";
 import {
@@ -21,6 +22,7 @@ import {
   isOAuthProvider,
   isSupabaseConfigured,
   signInWithPassword,
+  signOutSession,
   signUpWithPassword,
 } from "@/lib/supabase-rest";
 
@@ -211,6 +213,12 @@ export async function signupAction(formData: FormData): Promise<void> {
 }
 
 export async function logoutAction(): Promise<void> {
+  const session = await getAuthSessionFromCookie();
+
+  if (session) {
+    await signOutSession(session.accessToken).catch(() => undefined);
+  }
+
   const cookieStore = await cookies();
   cookieStore.delete(OAUTH_CODE_VERIFIER_COOKIE_NAME);
   cookieStore.delete(OAUTH_STATE_COOKIE_NAME);

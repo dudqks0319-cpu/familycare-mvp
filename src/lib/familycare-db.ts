@@ -108,6 +108,9 @@ export type DashboardData = {
   recentAlerts: Checkin[];
 };
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function getSupabaseErrorMessage(payload: SupabaseErrorPayload | null): string {
   if (!payload) {
     return "Supabase 요청 중 오류가 발생했습니다.";
@@ -126,28 +129,36 @@ function getSupabaseErrorMessage(payload: SupabaseErrorPayload | null): string {
 function buildInFilter(values: string[]): string {
   const normalized = values
     .map((value) => value.trim())
-    .filter((value) => value.length > 0)
-    .map((value) => value.replaceAll(",", ""));
+    .filter((value) => UUID_REGEX.test(value));
+
+  if (normalized.length === 0) {
+    throw new Error("유효한 UUID 값이 없어 조회를 수행할 수 없습니다.");
+  }
 
   return `in.(${normalized.join(",")})`;
 }
 
-function kstDateKey(isoString: string): string {
-  return new Intl.DateTimeFormat("sv-SE", {
+function getTodayKstStartIso(): string {
+  const dateParts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date(isoString));
-}
+  })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, part) => {
+      if (part.type !== "literal") {
+        acc[part.type] = part.value;
+      }
 
-function todayKstDateKey(): string {
-  return new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+      return acc;
+    }, {});
+
+  const year = dateParts.year;
+  const month = dateParts.month;
+  const day = dateParts.day;
+
+  return `${year}-${month}-${day}T00:00:00+09:00`;
 }
 
 async function supabaseRequest<T>(
@@ -440,6 +451,10 @@ export async function setMedicationScheduleActive(
 export async function listMedicationLogs(
   session: AuthSession,
   recipientIds: string[],
+  options?: {
+    since?: string;
+    limit?: number;
+  },
 ): Promise<MedicationLog[]> {
   if (recipientIds.length === 0) {
     return [];
@@ -450,7 +465,9 @@ export async function listMedicationLogs(
       select:
         "id,recipient_id,schedule_id,status,memo,logged_by,logged_at,created_at",
       recipient_id: buildInFilter(recipientIds),
+      logged_at: options?.since ? `gte.${options.since}` : undefined,
       order: "logged_at.desc",
+      limit: options?.limit ? String(options.limit) : undefined,
     },
   });
 }
@@ -479,6 +496,10 @@ export async function createMedicationLog(
 export async function listCheckins(
   session: AuthSession,
   recipientIds: string[],
+  options?: {
+    since?: string;
+    limit?: number;
+  },
 ): Promise<Checkin[]> {
   if (recipientIds.length === 0) {
     return [];
@@ -488,7 +509,9 @@ export async function listCheckins(
     query: {
       select: "id,recipient_id,checked_by,status,memo,checked_at,created_at",
       recipient_id: buildInFilter(recipientIds),
+      checked_at: options?.since ? `gte.${options.since}` : undefined,
       order: "checked_at.desc",
+      limit: options?.limit ? String(options.limit) : undefined,
     },
   });
 }
@@ -534,13 +557,29 @@ export async function getDashboardData(
     };
   }
 
-  const [members, medicationSchedules, medicationLogs, checkins] =
-    await Promise.all([
-      listRecipientMembers(session, recipientIds),
-      listMedicationSchedules(session, recipientIds),
-      listMedicationLogs(session, recipientIds),
-      listCheckins(session, recipientIds),
-    ]);
+  const todayKstStartIso = getTodayKstStartIso();
+
+  const [
+    members,
+    medicationSchedules,
+    medicationLogs,
+    checkins,
+    todayMedicationLogs,
+    todayCheckins,
+  ] = await Promise.all([
+    listRecipientMembers(session, recipientIds),
+    listMedicationSchedules(session, recipientIds),
+    listMedicationLogs(session, recipientIds, { limit: 500 }),
+    listCheckins(session, recipientIds, { limit: 500 }),
+    listMedicationLogs(session, recipientIds, {
+      since: todayKstStartIso,
+      limit: 2000,
+    }),
+    listCheckins(session, recipientIds, {
+      since: todayKstStartIso,
+      limit: 2000,
+    }),
+  ]);
 
   const bundles = recipients.map((recipient) => {
     const memberRows = members.filter(
@@ -565,16 +604,6 @@ export async function getDashboardData(
     } satisfies RecipientBundle;
   });
 
-  const todayKey = todayKstDateKey();
-
-  const todayCheckins = checkins.filter(
-    (checkin) => kstDateKey(checkin.checked_at) === todayKey,
-  );
-
-  const todayMedicationLogs = medicationLogs.filter(
-    (log) => kstDateKey(log.logged_at) === todayKey,
-  );
-
   const todayTakenCount = todayMedicationLogs.filter(
     (log) => log.status === "taken",
   ).length;
@@ -586,9 +615,7 @@ export async function getDashboardData(
 
   const recentAlerts = checkins
     .filter((checkin) => checkin.status !== "ok")
-    .sort((left, right) =>
-      right.checked_at.localeCompare(left.checked_at),
-    )
+    .sort((left, right) => right.checked_at.localeCompare(left.checked_at))
     .slice(0, 10);
 
   return {

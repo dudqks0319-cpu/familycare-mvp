@@ -1,7 +1,12 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { AUTH_COOKIE_NAME, type AuthSession } from "@/lib/auth-session";
+import {
+  AUTH_COOKIE_NAME,
+  getAuthCookieOptions,
+  serializeAuthSession,
+  type AuthSession,
+} from "@/lib/auth-session";
 import {
   OAUTH_CODE_VERIFIER_COOKIE_NAME,
   OAUTH_PROVIDER_COOKIE_NAME,
@@ -35,13 +40,8 @@ function clearOAuthCookies(response: NextResponse): void {
 }
 
 function setAuthCookie(response: NextResponse, session: AuthSession): void {
-  response.cookies.set(AUTH_COOKIE_NAME, JSON.stringify(session), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-    expires: new Date(session.expiresAt * 1000),
+  response.cookies.set(AUTH_COOKIE_NAME, serializeAuthSession(session), {
+    ...getAuthCookieOptions(session.expiresAt),
   });
 }
 

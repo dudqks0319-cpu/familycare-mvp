@@ -48,9 +48,11 @@ npm run dev
 NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+SESSION_ENCRYPTION_KEY=<32자 이상 랜덤 문자열>
 ```
 
 `NEXT_PUBLIC_SITE_URL`은 OAuth callback URL 생성에 사용됩니다.
+`SESSION_ENCRYPTION_KEY`는 인증 세션 쿠키 암호화에 사용됩니다.
 
 ## Supabase SQL 적용
 
@@ -58,6 +60,7 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 2. 아래 순서로 SQL 파일 실행
    - `supabase/migrations/202602200730_init_familycare.sql`
    - `supabase/migrations/202602200910_week2_features.sql`
+   - `supabase/migrations/202602200920_recipient_delete_policy.sql`
 
 ## Supabase Provider 설정 (Google / Kakao)
 

@@ -236,8 +236,14 @@ async function DashboardContent({ sessionUserId }: { sessionUserId: string }) {
       <section className="grid gap-6 xl:grid-cols-[2fr_1fr]">
         <div className="space-y-6">
           {dashboardData.bundles.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-600">
-              아직 등록된 피보호자가 없습니다. 위 폼에서 첫 피보호자를 등록해 주세요.
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">아직 등록된 피보호자가 없습니다.</p>
+              <p className="mt-2">처음 시작은 아래 3단계만 진행해 주세요.</p>
+              <ol className="mt-3 list-inside list-decimal space-y-1">
+                <li>먼저 피보호자 1명을 등록합니다.</li>
+                <li>복약 일정 1개를 등록합니다.</li>
+                <li>체크인(정상/주의/위험) 1건을 기록합니다.</li>
+              </ol>
             </div>
           ) : (
             dashboardData.bundles.map((bundle) => (
@@ -258,11 +264,15 @@ async function DashboardContent({ sessionUserId }: { sessionUserId: string }) {
                       <p className="mt-2 text-sm text-slate-700">메모: {bundle.recipient.notes}</p>
                     ) : null}
                   </div>
-                  <form action={deleteRecipientAction}>
+                  <form action={deleteRecipientAction} className="flex flex-col items-end gap-2">
                     <input type="hidden" name="recipientId" value={bundle.recipient.id} />
+                    <label className="flex items-center gap-2 text-xs text-rose-700">
+                      <input type="checkbox" required />
+                      삭제를 확인했습니다
+                    </label>
                     <button
                       type="submit"
-                      className="rounded-lg border border-rose-300 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                      className="rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
                     >
                       피보호자 삭제
                     </button>

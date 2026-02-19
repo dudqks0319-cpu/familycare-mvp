@@ -129,6 +129,27 @@ async function postAuth<TBody extends Record<string, string>>(
   return (payload ?? {}) as SupabaseAuthPayload;
 }
 
+async function postLogout(accessToken: string): Promise<void> {
+  const { url, anonKey } = assertSupabaseConfigured();
+
+  const response = await fetch(`${url}/auth/v1/logout`, {
+    method: "POST",
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | SupabaseErrorPayload
+      | null;
+    throw new Error(getErrorMessage(payload));
+  }
+}
+
 export function buildOAuthAuthorizeUrl(params: {
   provider: OAuthProvider;
   codeChallenge: string;
@@ -157,6 +178,20 @@ export async function exchangeOAuthCodeForSession(params: {
   });
 
   return toAuthSession(payload);
+}
+
+export async function refreshAccessToken(
+  refreshToken: string,
+): Promise<AuthSession> {
+  const payload = await postAuth("/auth/v1/token?grant_type=refresh_token", {
+    refresh_token: refreshToken,
+  });
+
+  return toAuthSession(payload);
+}
+
+export async function signOutSession(accessToken: string): Promise<void> {
+  await postLogout(accessToken);
 }
 
 export async function signInWithPassword(params: {
