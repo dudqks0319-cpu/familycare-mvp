@@ -1,0 +1,125 @@
+"use server";
+
+import { redirect } from "next/navigation";
+
+import {
+  clearAuthSessionCookie,
+  setAuthSessionCookie,
+} from "@/lib/auth-session";
+import {
+  isSupabaseConfigured,
+  signInWithPassword,
+  signUpWithPassword,
+} from "@/lib/supabase-rest";
+
+function asString(value: FormDataEntryValue | null): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getSafeErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+}
+
+function buildRedirect(url: string, messageKey: "error" | "message", message: string) {
+  return `${url}&${messageKey}=${encodeURIComponent(message)}`;
+}
+
+export async function loginAction(formData: FormData): Promise<void> {
+  if (!isSupabaseConfigured()) {
+    redirect(
+      buildRedirect(
+        "/auth?mode=login",
+        "error",
+        "Supabase 환경변수가 설정되지 않았습니다. .env.local을 확인해 주세요.",
+      ),
+    );
+  }
+
+  const email = asString(formData.get("email")).toLowerCase();
+  const password = asString(formData.get("password"));
+
+  if (!email || !password) {
+    redirect(
+      buildRedirect(
+        "/auth?mode=login",
+        "error",
+        "이메일과 비밀번호를 모두 입력해 주세요.",
+      ),
+    );
+  }
+
+  try {
+    const session = await signInWithPassword({ email, password });
+    await setAuthSessionCookie(session);
+    redirect("/dashboard");
+  } catch (error) {
+    redirect(
+      buildRedirect("/auth?mode=login", "error", getSafeErrorMessage(error)),
+    );
+  }
+}
+
+export async function signupAction(formData: FormData): Promise<void> {
+  if (!isSupabaseConfigured()) {
+    redirect(
+      buildRedirect(
+        "/auth?mode=signup",
+        "error",
+        "Supabase 환경변수가 설정되지 않았습니다. .env.local을 확인해 주세요.",
+      ),
+    );
+  }
+
+  const email = asString(formData.get("email")).toLowerCase();
+  const password = asString(formData.get("password"));
+
+  if (!email || !password) {
+    redirect(
+      buildRedirect(
+        "/auth?mode=signup",
+        "error",
+        "이메일과 비밀번호를 모두 입력해 주세요.",
+      ),
+    );
+  }
+
+  if (password.length < 8) {
+    redirect(
+      buildRedirect(
+        "/auth?mode=signup",
+        "error",
+        "비밀번호는 8자 이상으로 설정해 주세요.",
+      ),
+    );
+  }
+
+  try {
+    const session = await signUpWithPassword({ email, password });
+
+    if (session) {
+      await setAuthSessionCookie(session);
+      redirect("/dashboard");
+    }
+
+    redirect(
+      buildRedirect(
+        "/auth?mode=login",
+        "message",
+        "가입 요청이 접수되었습니다. 이메일 인증 후 로그인해 주세요.",
+      ),
+    );
+  } catch (error) {
+    redirect(
+      buildRedirect("/auth?mode=signup", "error", getSafeErrorMessage(error)),
+    );
+  }
+}
+
+export async function logoutAction(): Promise<void> {
+  await clearAuthSessionCookie();
+  redirect("/auth?mode=login&message=로그아웃되었습니다.");
+}
