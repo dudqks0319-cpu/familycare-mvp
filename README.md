@@ -2,12 +2,31 @@
 
 가족 돌봄 상황을 공유하고 체크인/복약 관리를 빠르게 시작하기 위한 MVP입니다.
 
-## Day1 구현 범위
+## 구현 범위 (2주차 계획 반영 완료)
 
-- Supabase 스키마 초안 (`supabase/migrations/202602200730_init_familycare.sql`)
-- 인증 뼈대 (회원가입/로그인/로그아웃)
-- 서버 페이지 보호용 세션 쿠키 처리
-- 기본 대시보드 화면
+### Week1
+
+- Day1: Supabase 스키마 + 인증 뼈대
+- Day2: 피보호자 등록/삭제 + owner 멤버 자동 연결
+- Day3: 복약 일정 등록/활성화 제어
+- Day4: 체크인(정상/주의/위험) 기록
+- Day5: 대시보드 통계 카드
+
+### Week2
+
+- Day6: 복약 로그(복약 완료/누락) 기록
+- Day7: 위험/주의 알림 보드
+- Day8: 돌봄 멤버 추가/권한 제어/제거
+- Day9: 설정 페이지(프로필 저장)
+- Day10: 인증 기반 `/api/dashboard` JSON API
+
+## 주요 라우트
+
+- `/` : 홈
+- `/auth` : 로그인/회원가입
+- `/dashboard` : 돌봄 운영 대시보드
+- `/settings` : 계정/프로필 설정
+- `/api/dashboard` : 인증 사용자 대시보드 JSON
 
 ## 로컬 실행
 
@@ -31,7 +50,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 ## Supabase SQL 적용
 
 1. Supabase Dashboard → SQL Editor 이동
-2. `supabase/migrations/202602200730_init_familycare.sql` 내용 실행
+2. 아래 순서로 SQL 파일 실행
+   - `supabase/migrations/202602200730_init_familycare.sql`
+   - `supabase/migrations/202602200910_week2_features.sql`
 3. Auth > Providers에서 이메일 로그인 활성화 확인
 
 ## 테스트/검증
@@ -42,8 +63,11 @@ npm run lint
 npm run build
 ```
 
-## 참고 사항
+## 보안/운영 메모
 
-- 현재 인증은 **Supabase Auth REST 호출 기반 스켈레톤**입니다.
-- 액세스/리프레시 토큰을 httpOnly 쿠키에 저장하는 MVP 구조이며, 이후 단계에서 갱신 로직·에러 복구를 보강해야 합니다.
-- 실제 운영 전에는 비밀번호 정책/이메일 인증 정책/감사 로그를 추가해 주세요.
+- 현재 인증은 Supabase Auth REST + httpOnly 쿠키 기반 MVP 구조입니다.
+- 운영 전 권장사항
+  - 이메일 인증 정책 강화
+  - 비밀번호 정책 강화
+  - 알림 채널(SMS/푸시) 연결
+  - 감사 로그/모니터링 추가

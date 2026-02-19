@@ -28,7 +28,7 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 }
 
-function assertSupabaseConfigured(): { url: string; anonKey: string } {
+export function assertSupabaseConfigured(): { url: string; anonKey: string } {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     throw new Error("Supabase 환경변수가 비어 있습니다. .env.local을 확인해 주세요.");
   }
