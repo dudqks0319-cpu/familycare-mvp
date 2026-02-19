@@ -2,7 +2,7 @@
 
 가족 돌봄 상황을 공유하고 체크인/복약 관리를 빠르게 시작하기 위한 MVP입니다.
 
-## 구현 범위 (2주차 계획 반영 완료)
+## 구현 범위 (2주차 계획 반영 + 소셜 로그인 확장)
 
 ### Week1
 
@@ -19,11 +19,13 @@
 - Day8: 돌봄 멤버 추가/권한 제어/제거
 - Day9: 설정 페이지(프로필 저장)
 - Day10: 인증 기반 `/api/dashboard` JSON API
+- Day11: Supabase OAuth (Google / Kakao) 연동
 
 ## 주요 라우트
 
 - `/` : 홈
-- `/auth` : 로그인/회원가입
+- `/auth` : 이메일 로그인/회원가입 + Google/Kakao 소셜 로그인
+- `/auth/callback` : OAuth 콜백 처리 라우트
 - `/dashboard` : 돌봄 운영 대시보드
 - `/settings` : 계정/프로필 설정
 - `/api/dashboard` : 인증 사용자 대시보드 JSON
@@ -45,7 +47,10 @@ npm run dev
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
+
+`NEXT_PUBLIC_SITE_URL`은 OAuth callback URL 생성에 사용됩니다.
 
 ## Supabase SQL 적용
 
@@ -53,7 +58,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 2. 아래 순서로 SQL 파일 실행
    - `supabase/migrations/202602200730_init_familycare.sql`
    - `supabase/migrations/202602200910_week2_features.sql`
-3. Auth > Providers에서 이메일 로그인 활성화 확인
+
+## Supabase Provider 설정 (Google / Kakao)
+
+1. Supabase Dashboard → Authentication → Providers 이동
+2. Google, Kakao를 각각 Enable
+3. 각 Provider의 Client ID/Secret 입력
+4. 각 Provider 콘솔에서 Supabase Callback URL 등록
+   - 형식: `https://<project-ref>.supabase.co/auth/v1/callback`
+5. 프로젝트 URL(`NEXT_PUBLIC_SITE_URL`)과 Redirect URL allow list를 함께 점검
 
 ## 테스트/검증
 
@@ -66,6 +79,7 @@ npm run build
 ## 보안/운영 메모
 
 - 현재 인증은 Supabase Auth REST + httpOnly 쿠키 기반 MVP 구조입니다.
+- Google/Kakao는 Supabase OAuth로 연동되어 있으며, 네이버는 2단계(NextAuth 브릿지)로 확장 예정입니다.
 - 운영 전 권장사항
   - 이메일 인증 정책 강화
   - 비밀번호 정책 강화

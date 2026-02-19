@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { loginAction, signupAction } from "@/app/auth/actions";
+import { loginAction, signupAction, startOAuthAction } from "@/app/auth/actions";
 import { isSupabaseConfigured } from "@/lib/supabase-rest";
 
 type AuthPageProps = {
@@ -33,12 +33,12 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-6 py-12">
       <header className="space-y-3">
-        <p className="text-sm font-medium text-sky-700">FamilyCare MVP · Day1</p>
+        <p className="text-sm font-medium text-sky-700">FamilyCare MVP · 인증</p>
         <h1 className="text-3xl font-semibold text-slate-900">
-          Supabase 인증 뼈대
+          이메일 + 소셜 로그인
         </h1>
         <p className="text-sm text-slate-600">
-          MVP 검증을 위한 최소 인증 흐름(회원가입/로그인/로그아웃)입니다.
+          MVP 검증을 위해 이메일 로그인과 Google/카카오 소셜 로그인을 함께 제공합니다.
         </p>
       </header>
 
@@ -95,9 +95,36 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
               type="submit"
               className="w-full rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
             >
-              로그인
+              이메일 로그인
             </button>
           </form>
+
+          <div className="my-4 h-px bg-slate-200" />
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-slate-500">소셜 로그인 (Supabase OAuth)</p>
+            <form action={startOAuthAction}>
+              <input type="hidden" name="provider" value="google" />
+              <button
+                type="submit"
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              >
+                Google로 로그인
+              </button>
+            </form>
+            <form action={startOAuthAction}>
+              <input type="hidden" name="provider" value="kakao" />
+              <button
+                type="submit"
+                className="w-full rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm font-semibold text-yellow-900 hover:bg-yellow-100"
+              >
+                카카오로 로그인
+              </button>
+            </form>
+            <p className="text-[11px] text-slate-500">
+              네이버 로그인은 2단계(NextAuth 연동 브릿지)로 추가 예정입니다.
+            </p>
+          </div>
         </section>
 
         <section

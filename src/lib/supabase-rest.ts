@@ -21,11 +21,44 @@ type SupabaseErrorPayload = {
   message?: string;
 };
 
+export const OAUTH_PROVIDERS = ["google", "kakao"] as const;
+
+export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+function trimTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+export function getAppSiteUrl(): string {
+  const rawSiteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    process.env.SITE_URL ??
+    process.env.NEXT_PUBLIC_APP_URL;
+
+  if (rawSiteUrl && rawSiteUrl.trim().length > 0) {
+    return trimTrailingSlash(rawSiteUrl.trim());
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${trimTrailingSlash(process.env.VERCEL_URL)}`;
+  }
+
+  return "http://localhost:3000";
+}
+
+export function getOAuthCallbackUrl(): string {
+  return `${getAppSiteUrl()}/auth/callback`;
+}
+
 export function isSupabaseConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+}
+
+export function isOAuthProvider(value: string): value is OAuthProvider {
+  return OAUTH_PROVIDERS.includes(value as OAuthProvider);
 }
 
 export function assertSupabaseConfigured(): { url: string; anonKey: string } {
@@ -33,7 +66,7 @@ export function assertSupabaseConfigured(): { url: string; anonKey: string } {
     throw new Error("Supabase 환경변수가 비어 있습니다. .env.local을 확인해 주세요.");
   }
 
-  return { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY };
+  return { url: trimTrailingSlash(SUPABASE_URL), anonKey: SUPABASE_ANON_KEY };
 }
 
 function getErrorMessage(payload: SupabaseErrorPayload | null): string {
@@ -94,6 +127,36 @@ async function postAuth<TBody extends Record<string, string>>(
   }
 
   return (payload ?? {}) as SupabaseAuthPayload;
+}
+
+export function buildOAuthAuthorizeUrl(params: {
+  provider: OAuthProvider;
+  codeChallenge: string;
+  state: string;
+  redirectTo?: string;
+}): string {
+  const { url } = assertSupabaseConfigured();
+  const authorizeUrl = new URL(`${url}/auth/v1/authorize`);
+
+  authorizeUrl.searchParams.set("provider", params.provider);
+  authorizeUrl.searchParams.set("code_challenge", params.codeChallenge);
+  authorizeUrl.searchParams.set("code_challenge_method", "s256");
+  authorizeUrl.searchParams.set("state", params.state);
+  authorizeUrl.searchParams.set("redirect_to", params.redirectTo ?? getOAuthCallbackUrl());
+
+  return authorizeUrl.toString();
+}
+
+export async function exchangeOAuthCodeForSession(params: {
+  authCode: string;
+  codeVerifier: string;
+}): Promise<AuthSession> {
+  const payload = await postAuth("/auth/v1/token?grant_type=pkce", {
+    auth_code: params.authCode,
+    code_verifier: params.codeVerifier,
+  });
+
+  return toAuthSession(payload);
 }
 
 export async function signInWithPassword(params: {
