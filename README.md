@@ -28,9 +28,10 @@
 - `/auth` : 이메일 로그인/회원가입 + Google/Kakao 소셜 로그인
 - `/auth/callback` : OAuth 콜백 처리 라우트
 - `/dashboard` : 돌봄 운영 대시보드
+- `/planner` : 영유아/어르신 맞춤 돌봄 플래너 (24시간 기록/도넛 차트/달력/주중·주말)
 - `/invite` : 이메일 초대 링크 수락
 - `/settings` : 계정/프로필 설정
-- `/api/dashboard` : 인증 사용자 대시보드 JSON
+- `/api/dashboard` : 대시보드 JSON (테스트 모드/인증 모드)
 
 ## 로컬 실행
 
@@ -51,10 +52,13 @@ NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 SESSION_ENCRYPTION_KEY=<32자 이상 랜덤 문자열>
+# 임시 공개 테스트 모드 (기본 on, 잠글 때 off)
+PUBLIC_TEST_MODE=on
 ```
 
 `NEXT_PUBLIC_SITE_URL`은 OAuth callback URL 생성에 사용됩니다.
 `SESSION_ENCRYPTION_KEY`는 인증 세션 쿠키 암호화에 사용됩니다.
+`PUBLIC_TEST_MODE`가 on이면 로그인 없이 전체 테스트가 가능합니다.
 
 ## Supabase SQL 적용
 

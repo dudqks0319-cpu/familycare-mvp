@@ -169,6 +169,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           >
             설정
           </Link>
+          <Link
+            href="/planner"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
+          >
+            돌봄 플래너
+          </Link>
           {session && !useMockMode ? (
             <form action={logoutAction}>
               <button

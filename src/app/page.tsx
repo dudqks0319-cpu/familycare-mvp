@@ -18,7 +18,7 @@ export default async function Home() {
         </p>
       </header>
 
-      <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:grid-cols-2 xl:grid-cols-5">
         <FeatureCard
           title="Week1 Day1"
           description="Supabase Auth + 세션 쿠키 + 초기 스키마"
@@ -34,6 +34,10 @@ export default async function Home() {
         <FeatureCard
           title="Week2 Day10"
           description="인증 기반 /api/dashboard JSON 제공"
+        />
+        <FeatureCard
+          title="Care Planner"
+          description="24시간 기록 + 도넛 차트 + 주중/주말 + 달력"
         />
       </section>
 
@@ -64,6 +68,12 @@ export default async function Home() {
           className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100"
         >
           설정
+        </Link>
+        <Link
+          href="/planner"
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100"
+        >
+          돌봄 플래너
         </Link>
       </div>
     </main>

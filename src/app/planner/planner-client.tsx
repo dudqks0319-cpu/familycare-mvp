@@ -1,0 +1,1655 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+type RecipientType = "child" | "elder";
+type ScheduleType = "weekday" | "weekend";
+
+type ActivityCategory =
+  | "meal"
+  | "snack"
+  | "nap"
+  | "daycare_dropoff"
+  | "daycare_pickup"
+  | "medication"
+  | "hospital"
+  | "vaccine_shot"
+  | "vaccine_booking";
+
+type ActivityEntry = {
+  id: string;
+  date: string;
+  time: string;
+  category: ActivityCategory;
+  title: string;
+  notes: string;
+};
+
+type AppointmentKind = "hospital" | "vaccine";
+
+type Appointment = {
+  id: string;
+  date: string;
+  time: string;
+  kind: AppointmentKind;
+  title: string;
+  description: string;
+  completed: boolean;
+};
+
+type VaccineRecord = {
+  id: string;
+  name: string;
+  date: string;
+  note: string;
+  sourceAppointmentId?: string;
+};
+
+type ScheduleItem = {
+  id: string;
+  time: string;
+  label: string;
+};
+
+type PlannerState = {
+  guardianName: string;
+  recipientName: string;
+  recipientType: RecipientType;
+  ageMonths: number;
+  activities: ActivityEntry[];
+  appointments: Appointment[];
+  vaccineRecords: VaccineRecord[];
+  schedules: {
+    weekday: ScheduleItem[];
+    weekend: ScheduleItem[];
+  };
+};
+
+type MenuItem = {
+  id:
+    | "overview"
+    | "timeline"
+    | "daycare"
+    | "medication"
+    | "hospital"
+    | "vaccine"
+    | "schedule"
+    | "calendar";
+  label: string;
+};
+
+const STORAGE_KEY = "familycare_planner_v1";
+
+const CATEGORY_META: Record<
+  ActivityCategory,
+  {
+    label: string;
+    color: string;
+    badgeClass: string;
+    recipientTypes: RecipientType[];
+  }
+> = {
+  meal: {
+    label: "식사",
+    color: "#0284c7",
+    badgeClass: "bg-sky-100 text-sky-700",
+    recipientTypes: ["child", "elder"],
+  },
+  snack: {
+    label: "간식",
+    color: "#f97316",
+    badgeClass: "bg-orange-100 text-orange-700",
+    recipientTypes: ["child"],
+  },
+  nap: {
+    label: "수면/낮잠",
+    color: "#8b5cf6",
+    badgeClass: "bg-violet-100 text-violet-700",
+    recipientTypes: ["child", "elder"],
+  },
+  daycare_dropoff: {
+    label: "어린이집 등원",
+    color: "#10b981",
+    badgeClass: "bg-emerald-100 text-emerald-700",
+    recipientTypes: ["child"],
+  },
+  daycare_pickup: {
+    label: "어린이집 하원",
+    color: "#14b8a6",
+    badgeClass: "bg-teal-100 text-teal-700",
+    recipientTypes: ["child"],
+  },
+  medication: {
+    label: "약 복용",
+    color: "#ec4899",
+    badgeClass: "bg-pink-100 text-pink-700",
+    recipientTypes: ["child", "elder"],
+  },
+  hospital: {
+    label: "병원 방문",
+    color: "#ef4444",
+    badgeClass: "bg-rose-100 text-rose-700",
+    recipientTypes: ["child", "elder"],
+  },
+  vaccine_shot: {
+    label: "접종 완료",
+    color: "#6366f1",
+    badgeClass: "bg-indigo-100 text-indigo-700",
+    recipientTypes: ["child"],
+  },
+  vaccine_booking: {
+    label: "접종 예약",
+    color: "#a855f7",
+    badgeClass: "bg-purple-100 text-purple-700",
+    recipientTypes: ["child"],
+  },
+};
+
+const CHILD_MENU: MenuItem[] = [
+  { id: "overview", label: "대상자 정보" },
+  { id: "timeline", label: "24시간 기록" },
+  { id: "daycare", label: "어린이집" },
+  { id: "medication", label: "복약" },
+  { id: "vaccine", label: "접종" },
+  { id: "schedule", label: "평일/주말" },
+  { id: "calendar", label: "달력" },
+];
+
+const ELDER_MENU: MenuItem[] = [
+  { id: "overview", label: "대상자 정보" },
+  { id: "timeline", label: "24시간 기록" },
+  { id: "medication", label: "복약" },
+  { id: "hospital", label: "병원" },
+  { id: "schedule", label: "평일/주말" },
+  { id: "calendar", label: "달력" },
+];
+
+const VACCINE_HELP: Record<string, string> = {
+  BCG: "결핵 예방. 생후 초기 1회 접종 권장",
+  "DTaP-IPV": "디프테리아/파상풍/백일해/소아마비 예방",
+  MMR: "홍역/유행성이하선염/풍진 예방",
+  VAR: "수두 예방 접종",
+  "HepA": "A형 간염 예방",
+  "Influenza": "독감 예방. 유행 시기 전 접종 권장",
+};
+
+function createId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `id-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function toDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function toTimeKey(date: Date): string {
+  return date.toTimeString().slice(0, 5);
+}
+
+function toDateTimeKey(date: string, time: string): string {
+  return `${date}T${time}:00`;
+}
+
+function scrollToSection(sectionId: MenuItem["id"]): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.getElementById(sectionId)?.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+}
+
+function sortByDateTimeAsc<T extends { date: string; time: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) =>
+    toDateTimeKey(a.date, a.time).localeCompare(toDateTimeKey(b.date, b.time)),
+  );
+}
+
+function sortByTimeAsc<T extends { time: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => a.time.localeCompare(b.time));
+}
+
+function createInitialPlannerState(): PlannerState {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+
+  const today = toDateKey(now);
+
+  return {
+    guardianName: "보호자",
+    recipientName: "아기",
+    recipientType: "child",
+    ageMonths: 23,
+    activities: sortByDateTimeAsc<ActivityEntry>([
+      {
+        id: createId(),
+        date: today,
+        time: "07:40",
+        category: "meal",
+        title: "아침 이유식",
+        notes: "150ml 섭취",
+      },
+      {
+        id: createId(),
+        date: today,
+        time: "09:05",
+        category: "daycare_dropoff",
+        title: "어린이집 등원",
+        notes: "가방/여벌옷 전달",
+      },
+      {
+        id: createId(),
+        date: today,
+        time: "10:30",
+        category: "snack",
+        title: "바나나 간식",
+        notes: "반 개 섭취",
+      },
+      {
+        id: createId(),
+        date: today,
+        time: "13:20",
+        category: "nap",
+        title: "낮잠",
+        notes: "약 1시간 20분",
+      },
+      {
+        id: createId(),
+        date: today,
+        time: "16:45",
+        category: "daycare_pickup",
+        title: "어린이집 하원",
+        notes: "하원 후 간식 예정",
+      },
+      {
+        id: createId(),
+        date: today,
+        time: "20:00",
+        category: "medication",
+        title: "감기약",
+        notes: "2.5ml 복용",
+      },
+    ]),
+    appointments: [
+      {
+        id: createId(),
+        date: toDateKey(tomorrow),
+        time: "10:30",
+        kind: "vaccine",
+        title: "MMR 1차",
+        description: VACCINE_HELP.MMR,
+        completed: false,
+      },
+      {
+        id: createId(),
+        date: toDateKey(tomorrow),
+        time: "15:00",
+        kind: "hospital",
+        title: "소아과 진료",
+        description: "기침/코감기 경과 확인",
+        completed: false,
+      },
+    ],
+    vaccineRecords: [
+      {
+        id: createId(),
+        name: "BCG",
+        date: "2024-05-10",
+        note: "이상 반응 없음",
+      },
+      {
+        id: createId(),
+        name: "DTaP-IPV 1차",
+        date: "2024-07-12",
+        note: "당일 미열",
+      },
+    ],
+    schedules: {
+      weekday: [
+        { id: createId(), time: "07:30", label: "아침 식사" },
+        { id: createId(), time: "09:00", label: "어린이집 등원" },
+        { id: createId(), time: "12:00", label: "점심" },
+        { id: createId(), time: "13:00", label: "낮잠" },
+        { id: createId(), time: "17:00", label: "하원" },
+      ],
+      weekend: [
+        { id: createId(), time: "08:30", label: "아침 식사" },
+        { id: createId(), time: "11:30", label: "공원 산책" },
+        { id: createId(), time: "13:00", label: "낮잠" },
+      ],
+    },
+  };
+}
+
+function loadPlannerState(): PlannerState {
+  const fallback = createInitialPlannerState();
+
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+
+  if (!raw) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<PlannerState>;
+
+    return {
+      guardianName: parsed.guardianName ?? fallback.guardianName,
+      recipientName: parsed.recipientName ?? fallback.recipientName,
+      recipientType: parsed.recipientType ?? fallback.recipientType,
+      ageMonths: parsed.ageMonths ?? fallback.ageMonths,
+      activities: Array.isArray(parsed.activities)
+        ? parsed.activities
+        : fallback.activities,
+      appointments: Array.isArray(parsed.appointments)
+        ? parsed.appointments
+        : fallback.appointments,
+      vaccineRecords: Array.isArray(parsed.vaccineRecords)
+        ? parsed.vaccineRecords
+        : fallback.vaccineRecords,
+      schedules: {
+        weekday:
+          parsed.schedules && Array.isArray(parsed.schedules.weekday)
+            ? parsed.schedules.weekday
+            : fallback.schedules.weekday,
+        weekend:
+          parsed.schedules && Array.isArray(parsed.schedules.weekend)
+            ? parsed.schedules.weekend
+            : fallback.schedules.weekend,
+      },
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function getAvailableCategories(recipientType: RecipientType): ActivityCategory[] {
+  return (Object.keys(CATEGORY_META) as ActivityCategory[]).filter((category) =>
+    CATEGORY_META[category].recipientTypes.includes(recipientType),
+  );
+}
+
+function getCalendarGrid(year: number, monthIndex: number): Array<{
+  date: string;
+  day: number;
+  inMonth: boolean;
+}> {
+  const firstDay = new Date(year, monthIndex, 1);
+  const firstWeekday = firstDay.getDay();
+  const gridStart = new Date(year, monthIndex, 1 - firstWeekday);
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const current = new Date(gridStart);
+    current.setDate(gridStart.getDate() + index);
+
+    return {
+      date: toDateKey(current),
+      day: current.getDate(),
+      inMonth: current.getMonth() === monthIndex,
+    };
+  });
+}
+
+export function PlannerClient() {
+  const [planner, setPlanner] = useState<PlannerState>(loadPlannerState);
+  const [selectedDate, setSelectedDate] = useState<string>(() => toDateKey(new Date()));
+  const [calendarMonth, setCalendarMonth] = useState<string>(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  });
+
+  const [activityDraft, setActivityDraft] = useState({
+    date: toDateKey(new Date()),
+    time: toTimeKey(new Date()),
+    category: "meal" as ActivityCategory,
+    title: "",
+    notes: "",
+  });
+
+  const [scheduleDraft, setScheduleDraft] = useState({
+    type: "weekday" as ScheduleType,
+    time: "09:00",
+    label: "",
+  });
+
+  const [hospitalDraft, setHospitalDraft] = useState({
+    date: toDateKey(new Date()),
+    time: "10:00",
+    title: "",
+    description: "",
+  });
+
+  const [vaccineDraft, setVaccineDraft] = useState({
+    date: toDateKey(new Date()),
+    time: "10:00",
+    vaccineName: "MMR",
+    description: VACCINE_HELP.MMR,
+  });
+
+  const [vaccineRecordDraft, setVaccineRecordDraft] = useState({
+    date: toDateKey(new Date()),
+    name: "",
+    note: "",
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(planner));
+  }, [planner]);
+
+  const availableCategories = useMemo(
+    () => getAvailableCategories(planner.recipientType),
+    [planner.recipientType],
+  );
+
+  const selectedCategory = availableCategories.includes(activityDraft.category)
+    ? activityDraft.category
+    : availableCategories[0] ?? "meal";
+
+  const menuItems = planner.recipientType === "child" ? CHILD_MENU : ELDER_MENU;
+
+  const dayActivities = useMemo(
+    () =>
+      sortByDateTimeAsc(
+        planner.activities.filter((entry) => entry.date === selectedDate),
+      ),
+    [planner.activities, selectedDate],
+  );
+
+  const eventCounts = useMemo(() => {
+    return dayActivities.reduce<Record<ActivityCategory, number>>(
+      (acc, entry) => {
+        acc[entry.category] = (acc[entry.category] ?? 0) + 1;
+        return acc;
+      },
+      {
+        meal: 0,
+        snack: 0,
+        nap: 0,
+        daycare_dropoff: 0,
+        daycare_pickup: 0,
+        medication: 0,
+        hospital: 0,
+        vaccine_shot: 0,
+        vaccine_booking: 0,
+      },
+    );
+  }, [dayActivities]);
+
+  const sortedAppointments = useMemo(
+    () => sortByDateTimeAsc(planner.appointments),
+    [planner.appointments],
+  );
+
+  const nextAppointment = useMemo(
+    () => sortedAppointments.find((appointment) => !appointment.completed) ?? null,
+    [sortedAppointments],
+  );
+
+  const dayOfWeek = useMemo(() => {
+    const day = new Date(`${selectedDate}T00:00:00`).getDay();
+    return day === 0 || day === 6 ? "weekend" : "weekday";
+  }, [selectedDate]);
+
+  const activeSchedule = planner.schedules[dayOfWeek];
+
+  const calendarEventsByDate = useMemo(() => {
+    const map = new Map<string, { count: number; tags: string[] }>();
+
+    const pushEvent = (date: string, tag: string) => {
+      const current = map.get(date);
+      if (!current) {
+        map.set(date, { count: 1, tags: [tag] });
+        return;
+      }
+
+      current.count += 1;
+      if (current.tags.length < 2) {
+        current.tags.push(tag);
+      }
+      map.set(date, current);
+    };
+
+    planner.activities.forEach((entry) => {
+      pushEvent(entry.date, CATEGORY_META[entry.category].label);
+    });
+
+    planner.appointments.forEach((appointment) => {
+      pushEvent(
+        appointment.date,
+        appointment.kind === "vaccine" ? "접종예약" : "병원예약",
+      );
+    });
+
+    planner.vaccineRecords.forEach((record) => {
+      pushEvent(record.date, "접종완료");
+    });
+
+    return map;
+  }, [planner.activities, planner.appointments, planner.vaccineRecords]);
+
+  const [calendarYear, calendarMonthNumber] = calendarMonth
+    .split("-")
+    .map((value) => Number.parseInt(value, 10));
+
+  const calendarGrid = useMemo(
+    () => getCalendarGrid(calendarYear, (calendarMonthNumber || 1) - 1),
+    [calendarMonthNumber, calendarYear],
+  );
+
+  const daycareEntries = dayActivities.filter(
+    (entry) =>
+      entry.category === "daycare_dropoff" || entry.category === "daycare_pickup",
+  );
+
+  const medicationEntries = dayActivities.filter(
+    (entry) => entry.category === "medication",
+  );
+
+  const vaccineAppointments = sortedAppointments.filter(
+    (appointment) => appointment.kind === "vaccine",
+  );
+
+  const hospitalAppointments = sortedAppointments.filter(
+    (appointment) => appointment.kind === "hospital",
+  );
+
+  const addActivity = () => {
+    const title = activityDraft.title.trim() || CATEGORY_META[selectedCategory].label;
+
+    setPlanner((prev) => ({
+      ...prev,
+      activities: sortByDateTimeAsc([
+        ...prev.activities,
+        {
+          id: createId(),
+          date: activityDraft.date,
+          time: activityDraft.time,
+          category: selectedCategory,
+          title,
+          notes: activityDraft.notes.trim(),
+        },
+      ]),
+    }));
+
+    setSelectedDate(activityDraft.date);
+    setActivityDraft((prev) => ({
+      ...prev,
+      title: "",
+      notes: "",
+    }));
+  };
+
+  const removeActivity = (id: string) => {
+    setPlanner((prev) => ({
+      ...prev,
+      activities: prev.activities.filter((entry) => entry.id !== id),
+    }));
+  };
+
+  const addSchedule = () => {
+    if (!scheduleDraft.label.trim()) {
+      return;
+    }
+
+    setPlanner((prev) => ({
+      ...prev,
+      schedules: {
+        ...prev.schedules,
+        [scheduleDraft.type]: sortByTimeAsc([
+          ...prev.schedules[scheduleDraft.type],
+          {
+            id: createId(),
+            time: scheduleDraft.time,
+            label: scheduleDraft.label.trim(),
+          },
+        ]),
+      },
+    }));
+
+    setScheduleDraft((prev) => ({ ...prev, label: "" }));
+  };
+
+  const removeSchedule = (type: ScheduleType, id: string) => {
+    setPlanner((prev) => ({
+      ...prev,
+      schedules: {
+        ...prev.schedules,
+        [type]: prev.schedules[type].filter((item) => item.id !== id),
+      },
+    }));
+  };
+
+  const addHospitalAppointment = () => {
+    if (!hospitalDraft.title.trim()) {
+      return;
+    }
+
+    setPlanner((prev) => ({
+      ...prev,
+      appointments: sortByDateTimeAsc([
+        ...prev.appointments,
+        {
+          id: createId(),
+          date: hospitalDraft.date,
+          time: hospitalDraft.time,
+          kind: "hospital",
+          title: hospitalDraft.title.trim(),
+          description: hospitalDraft.description.trim(),
+          completed: false,
+        },
+      ]),
+    }));
+
+    setHospitalDraft((prev) => ({
+      ...prev,
+      title: "",
+      description: "",
+    }));
+  };
+
+  const addVaccineAppointment = () => {
+    if (!vaccineDraft.vaccineName.trim()) {
+      return;
+    }
+
+    setPlanner((prev) => ({
+      ...prev,
+      appointments: sortByDateTimeAsc([
+        ...prev.appointments,
+        {
+          id: createId(),
+          date: vaccineDraft.date,
+          time: vaccineDraft.time,
+          kind: "vaccine",
+          title: vaccineDraft.vaccineName,
+          description: vaccineDraft.description.trim(),
+          completed: false,
+        },
+      ]),
+    }));
+  };
+
+  const toggleAppointmentComplete = (appointmentId: string) => {
+    setPlanner((prev) => {
+      const target = prev.appointments.find((row) => row.id === appointmentId);
+      if (!target) {
+        return prev;
+      }
+
+      const nextCompleted = !target.completed;
+      const nextAppointments = prev.appointments.map((appointment) =>
+        appointment.id === appointmentId
+          ? { ...appointment, completed: nextCompleted }
+          : appointment,
+      );
+
+      let nextVaccineRecords = prev.vaccineRecords;
+
+      if (target.kind === "vaccine") {
+        if (nextCompleted) {
+          const exists = prev.vaccineRecords.some(
+            (record) => record.sourceAppointmentId === target.id,
+          );
+
+          if (!exists) {
+            nextVaccineRecords = [
+              {
+                id: createId(),
+                name: target.title,
+                date: target.date,
+                note: target.description || "예약 기반 완료 처리",
+                sourceAppointmentId: target.id,
+              },
+              ...prev.vaccineRecords,
+            ];
+          }
+        } else {
+          nextVaccineRecords = prev.vaccineRecords.filter(
+            (record) => record.sourceAppointmentId !== target.id,
+          );
+        }
+      }
+
+      return {
+        ...prev,
+        appointments: nextAppointments,
+        vaccineRecords: nextVaccineRecords,
+      };
+    });
+  };
+
+  const addVaccineRecord = () => {
+    if (!vaccineRecordDraft.name.trim()) {
+      return;
+    }
+
+    setPlanner((prev) => ({
+      ...prev,
+      vaccineRecords: [
+        {
+          id: createId(),
+          name: vaccineRecordDraft.name.trim(),
+          date: vaccineRecordDraft.date,
+          note: vaccineRecordDraft.note.trim(),
+        },
+        ...prev.vaccineRecords,
+      ],
+    }));
+
+    setVaccineRecordDraft((prev) => ({ ...prev, name: "", note: "" }));
+  };
+
+  const resetPlanner = () => {
+    setPlanner(createInitialPlannerState());
+    setSelectedDate(toDateKey(new Date()));
+  };
+
+  const donutTotal = Object.values(eventCounts).reduce((sum, count) => sum + count, 0);
+
+  const chartSlices = useMemo(() => {
+    const rows = (Object.keys(CATEGORY_META) as ActivityCategory[])
+      .map((category) => ({
+        category,
+        count: eventCounts[category],
+      }))
+      .filter((row) => row.count > 0);
+
+    if (rows.length === 0) {
+      return [] as Array<{ category: ActivityCategory; count: number; percent: number }>;
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      percent: row.count / donutTotal,
+    }));
+  }, [donutTotal, eventCounts]);
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-2xl border border-sky-200 bg-sky-50 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-sky-900">임시 공개 테스트 모드</h2>
+            <p className="mt-1 text-sm text-sky-800">
+              로그인 없이 전체 기능 테스트 가능 · 브라우저 로컬 저장소에 저장됩니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={resetPlanner}
+            className="rounded-lg border border-sky-300 bg-white px-3 py-2 text-sm font-medium text-sky-800 hover:bg-sky-100"
+          >
+            샘플 데이터로 초기화
+          </button>
+        </div>
+      </section>
+
+      <section className="flex flex-wrap gap-2">
+        {menuItems.map((menu) => (
+          <button
+            key={menu.id}
+            type="button"
+            onClick={() => scrollToSection(menu.id)}
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            {menu.label}
+          </button>
+        ))}
+      </section>
+
+      <section id="overview" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-semibold text-slate-900">보호자 · 피보호자 설정</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          돌봄대상자 유형(영유아/어르신)에 따라 메뉴가 바뀝니다.
+        </p>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <label className="text-sm text-slate-700">
+            보호자 이름
+            <input
+              value={planner.guardianName}
+              onChange={(event) =>
+                setPlanner((prev) => ({ ...prev, guardianName: event.target.value }))
+              }
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            />
+          </label>
+          <label className="text-sm text-slate-700">
+            피보호자 이름
+            <input
+              value={planner.recipientName}
+              onChange={(event) =>
+                setPlanner((prev) => ({ ...prev, recipientName: event.target.value }))
+              }
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            />
+          </label>
+          <label className="text-sm text-slate-700">
+            대상 유형
+            <select
+              value={planner.recipientType}
+              onChange={(event) =>
+                setPlanner((prev) => ({
+                  ...prev,
+                  recipientType: event.target.value as RecipientType,
+                }))
+              }
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            >
+              <option value="child">영유아/어린이</option>
+              <option value="elder">어르신</option>
+            </select>
+          </label>
+          <label className="text-sm text-slate-700">
+            나이(개월)
+            <input
+              type="number"
+              min={0}
+              value={planner.ageMonths}
+              onChange={(event) =>
+                setPlanner((prev) => ({
+                  ...prev,
+                  ageMonths: Number.parseInt(event.target.value || "0", 10),
+                }))
+              }
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+          <p>
+            현재: <span className="font-semibold">{planner.guardianName || "보호자"}</span> 님이
+            <span className="font-semibold"> {planner.recipientName || "대상자"}</span>
+            ({planner.recipientType === "child" ? "영유아/어린이" : "어르신"})를 돌보고 있습니다.
+          </p>
+        </div>
+      </section>
+
+      <section id="timeline" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">24시간 활동 기록</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              언제 무엇을 했는지 시간 단위로 기록하고, 동그란 그래프로 한눈에 확인합니다.
+            </p>
+          </div>
+          <label className="text-sm text-slate-700">
+            기준 날짜
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => {
+                setSelectedDate(event.target.value);
+                setActivityDraft((prev) => ({ ...prev, date: event.target.value }));
+              }}
+              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            />
+          </label>
+        </div>
+
+        <div className="mt-5 grid gap-6 lg:grid-cols-[260px_1fr]">
+          <div className="rounded-xl border border-slate-200 p-4">
+            <p className="text-sm font-semibold text-slate-900">활동 분포 도넛 차트</p>
+            <div className="mt-4 flex justify-center">
+              <svg width="180" height="180" viewBox="0 0 180 180" aria-label="활동 분포">
+                <g transform="translate(90 90) rotate(-90)">
+                  <circle r="62" cx="0" cy="0" fill="none" stroke="#e2e8f0" strokeWidth="20" />
+                  {chartSlices.length > 0
+                    ? (() => {
+                        const circumference = 2 * Math.PI * 62;
+                        let offset = 0;
+
+                        return chartSlices.map((slice) => {
+                          const length = slice.percent * circumference;
+                          const rendered = (
+                            <circle
+                              key={slice.category}
+                              r="62"
+                              cx="0"
+                              cy="0"
+                              fill="none"
+                              stroke={CATEGORY_META[slice.category].color}
+                              strokeWidth="20"
+                              strokeDasharray={`${length} ${circumference - length}`}
+                              strokeDashoffset={-offset}
+                              strokeLinecap="butt"
+                            />
+                          );
+                          offset += length;
+                          return rendered;
+                        });
+                      })()
+                    : null}
+                </g>
+                <text x="90" y="84" textAnchor="middle" className="fill-slate-500 text-xs">
+                  총 활동
+                </text>
+                <text x="90" y="106" textAnchor="middle" className="fill-slate-900 text-lg font-semibold">
+                  {donutTotal}건
+                </text>
+              </svg>
+            </div>
+
+            <ul className="mt-2 space-y-1 text-xs text-slate-700">
+              {chartSlices.length === 0 ? (
+                <li className="text-slate-500">해당 날짜 기록이 아직 없습니다.</li>
+              ) : (
+                chartSlices.map((slice) => (
+                  <li key={slice.category} className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: CATEGORY_META[slice.category].color }}
+                      />
+                      {CATEGORY_META[slice.category].label}
+                    </span>
+                    <span className="font-medium">{slice.count}건</span>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+
+          <div className="space-y-4 rounded-xl border border-slate-200 p-4">
+            <p className="text-sm font-semibold text-slate-900">활동 추가</p>
+            <div className="grid gap-3 md:grid-cols-4">
+              <label className="text-sm text-slate-700">
+                날짜
+                <input
+                  type="date"
+                  value={activityDraft.date}
+                  onChange={(event) =>
+                    setActivityDraft((prev) => ({ ...prev, date: event.target.value }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm text-slate-700">
+                시간
+                <input
+                  type="time"
+                  value={activityDraft.time}
+                  onChange={(event) =>
+                    setActivityDraft((prev) => ({ ...prev, time: event.target.value }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm text-slate-700 md:col-span-2">
+                활동 유형
+                <select
+                  value={selectedCategory}
+                  onChange={(event) =>
+                    setActivityDraft((prev) => ({
+                      ...prev,
+                      category: event.target.value as ActivityCategory,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                >
+                  {availableCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {CATEGORY_META[category].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm text-slate-700 md:col-span-2">
+                제목
+                <input
+                  value={activityDraft.title}
+                  onChange={(event) =>
+                    setActivityDraft((prev) => ({ ...prev, title: event.target.value }))
+                  }
+                  placeholder="예: 점심 이유식 / 해열제 복용"
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm text-slate-700 md:col-span-2">
+                메모
+                <input
+                  value={activityDraft.notes}
+                  onChange={(event) =>
+                    setActivityDraft((prev) => ({ ...prev, notes: event.target.value }))
+                  }
+                  placeholder="양/반응/특이사항"
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={addActivity}
+                className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+              >
+                기록 추가
+              </button>
+
+              {planner.recipientType === "child" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActivityDraft((prev) => ({
+                        ...prev,
+                        category: "daycare_dropoff",
+                        title: "어린이집 등원",
+                      }))
+                    }
+                    className="rounded-lg border border-emerald-300 px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50"
+                  >
+                    등원 빠른입력
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActivityDraft((prev) => ({
+                        ...prev,
+                        category: "daycare_pickup",
+                        title: "어린이집 하원",
+                      }))
+                    }
+                    className="rounded-lg border border-teal-300 px-3 py-2 text-sm text-teal-700 hover:bg-teal-50"
+                  >
+                    하원 빠른입력
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <ul className="mt-5 space-y-2 text-sm text-slate-700">
+          {dayActivities.length === 0 ? (
+            <li className="rounded-lg border border-dashed border-slate-300 p-4 text-slate-500">
+              선택한 날짜의 기록이 없습니다.
+            </li>
+          ) : (
+            dayActivities.map((entry) => (
+              <li
+                key={entry.id}
+                className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-slate-200 p-3"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-slate-900">{entry.time}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${CATEGORY_META[entry.category].badgeClass}`}>
+                      {CATEGORY_META[entry.category].label}
+                    </span>
+                    <span className="font-medium">{entry.title}</span>
+                  </div>
+                  {entry.notes ? <p className="mt-1 text-xs text-slate-500">{entry.notes}</p> : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeActivity(entry.id)}
+                  className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                >
+                  삭제
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      </section>
+
+      {planner.recipientType === "child" ? (
+        <section id="daycare" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-900">어린이집 등·하원</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            선택 날짜의 어린이집 기록만 따로 모아 확인합니다.
+          </p>
+
+          <ul className="mt-4 space-y-2 text-sm text-slate-700">
+            {daycareEntries.length === 0 ? (
+              <li className="rounded-lg border border-dashed border-slate-300 p-3 text-slate-500">
+                등원/하원 기록이 없습니다.
+              </li>
+            ) : (
+              daycareEntries.map((entry) => (
+                <li key={entry.id} className="rounded-lg border border-slate-200 p-3">
+                  <span className="font-semibold text-slate-900">{entry.time}</span>
+                  <span className="mx-2 text-slate-400">·</span>
+                  <span>{entry.title}</span>
+                  {entry.notes ? <p className="mt-1 text-xs text-slate-500">{entry.notes}</p> : null}
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
+      ) : null}
+
+      <section id="medication" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-semibold text-slate-900">복약 관리</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          활동기록에서 약 복용 항목만 추려서 확인합니다.
+        </p>
+
+        <ul className="mt-4 space-y-2 text-sm text-slate-700">
+          {medicationEntries.length === 0 ? (
+            <li className="rounded-lg border border-dashed border-slate-300 p-3 text-slate-500">
+              오늘 복약 기록이 없습니다.
+            </li>
+          ) : (
+            medicationEntries.map((entry) => (
+              <li key={entry.id} className="rounded-lg border border-slate-200 p-3">
+                <span className="font-semibold text-slate-900">{entry.time}</span>
+                <span className="mx-2 text-slate-400">·</span>
+                <span>{entry.title}</span>
+                {entry.notes ? <p className="mt-1 text-xs text-slate-500">{entry.notes}</p> : null}
+              </li>
+            ))
+          )}
+        </ul>
+      </section>
+
+      {planner.recipientType === "elder" ? (
+        <section id="hospital" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-900">병원 예약</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            다음 병원 일정과 예약 메모를 한눈에 관리합니다.
+          </p>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <label className="text-sm text-slate-700">
+              날짜
+              <input
+                type="date"
+                value={hospitalDraft.date}
+                onChange={(event) =>
+                  setHospitalDraft((prev) => ({ ...prev, date: event.target.value }))
+                }
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </label>
+            <label className="text-sm text-slate-700">
+              시간
+              <input
+                type="time"
+                value={hospitalDraft.time}
+                onChange={(event) =>
+                  setHospitalDraft((prev) => ({ ...prev, time: event.target.value }))
+                }
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </label>
+            <label className="text-sm text-slate-700 md:col-span-2">
+              일정 제목
+              <input
+                value={hospitalDraft.title}
+                onChange={(event) =>
+                  setHospitalDraft((prev) => ({ ...prev, title: event.target.value }))
+                }
+                placeholder="예: 내과 정기검진"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </label>
+            <label className="text-sm text-slate-700 md:col-span-4">
+              설명
+              <input
+                value={hospitalDraft.description}
+                onChange={(event) =>
+                  setHospitalDraft((prev) => ({ ...prev, description: event.target.value }))
+                }
+                placeholder="예: 혈압약 처방 갱신"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={addHospitalAppointment}
+            className="mt-3 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+          >
+            병원 예약 추가
+          </button>
+
+          <ul className="mt-4 space-y-2 text-sm text-slate-700">
+            {hospitalAppointments.length === 0 ? (
+              <li className="rounded-lg border border-dashed border-slate-300 p-3 text-slate-500">
+                병원 예약이 없습니다.
+              </li>
+            ) : (
+              hospitalAppointments.map((appointment) => (
+                <li key={appointment.id} className="rounded-lg border border-slate-200 p-3">
+                  <p className="font-medium text-slate-900">
+                    {appointment.date} {appointment.time} · {appointment.title}
+                  </p>
+                  {appointment.description ? (
+                    <p className="mt-1 text-xs text-slate-500">{appointment.description}</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => toggleAppointmentComplete(appointment.id)}
+                    className={`mt-2 rounded px-2 py-1 text-xs font-semibold ${
+                      appointment.completed
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-slate-100 text-slate-700"
+                    }`}
+                  >
+                    {appointment.completed ? "완료됨 (클릭 시 취소)" : "완료 처리"}
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
+      ) : null}
+
+      {planner.recipientType === "child" ? (
+        <section id="vaccine" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-900">접종 관리</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            접종 예약/완료 이력을 함께 관리하고, 다음 접종 일정을 확인합니다.
+          </p>
+
+          <div className="mt-4 grid gap-6 lg:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 p-4">
+              <p className="text-sm font-semibold text-slate-900">접종 예약 등록</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <label className="text-sm text-slate-700">
+                  날짜
+                  <input
+                    type="date"
+                    value={vaccineDraft.date}
+                    onChange={(event) =>
+                      setVaccineDraft((prev) => ({ ...prev, date: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  />
+                </label>
+                <label className="text-sm text-slate-700">
+                  시간
+                  <input
+                    type="time"
+                    value={vaccineDraft.time}
+                    onChange={(event) =>
+                      setVaccineDraft((prev) => ({ ...prev, time: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  />
+                </label>
+                <label className="text-sm text-slate-700 md:col-span-2">
+                  접종 종류
+                  <select
+                    value={vaccineDraft.vaccineName}
+                    onChange={(event) => {
+                      const vaccineName = event.target.value;
+                      setVaccineDraft((prev) => ({
+                        ...prev,
+                        vaccineName,
+                        description: VACCINE_HELP[vaccineName] ?? prev.description,
+                      }));
+                    }}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  >
+                    {Object.keys(VACCINE_HELP).map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm text-slate-700 md:col-span-2">
+                  설명
+                  <input
+                    value={vaccineDraft.description}
+                    onChange={(event) =>
+                      setVaccineDraft((prev) => ({ ...prev, description: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                onClick={addVaccineAppointment}
+                className="mt-3 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+              >
+                접종 예약 추가
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <p className="text-sm font-semibold text-slate-900">접종 완료 기록 추가</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <label className="text-sm text-slate-700">
+                  접종 날짜
+                  <input
+                    type="date"
+                    value={vaccineRecordDraft.date}
+                    onChange={(event) =>
+                      setVaccineRecordDraft((prev) => ({ ...prev, date: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  />
+                </label>
+                <label className="text-sm text-slate-700">
+                  접종명
+                  <input
+                    value={vaccineRecordDraft.name}
+                    onChange={(event) =>
+                      setVaccineRecordDraft((prev) => ({ ...prev, name: event.target.value }))
+                    }
+                    placeholder="예: MMR 1차"
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  />
+                </label>
+                <label className="text-sm text-slate-700 md:col-span-2">
+                  메모
+                  <input
+                    value={vaccineRecordDraft.note}
+                    onChange={(event) =>
+                      setVaccineRecordDraft((prev) => ({ ...prev, note: event.target.value }))
+                    }
+                    placeholder="예: 접종 후 미열"
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  />
+                </label>
+              </div>
+
+              <button
+                type="button"
+                onClick={addVaccineRecord}
+                className="mt-3 rounded-lg border border-indigo-300 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+              >
+                완료 기록 추가
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-xl border border-slate-200 p-4">
+            <p className="text-sm font-semibold text-slate-900">다음 예약</p>
+            {nextAppointment && nextAppointment.kind === "vaccine" ? (
+              <div className="mt-2 text-sm text-slate-700">
+                <p>
+                  <span className="font-semibold">{nextAppointment.date}</span> {nextAppointment.time}
+                  <span className="mx-2 text-slate-400">·</span>
+                  {nextAppointment.title}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">{nextAppointment.description}</p>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-slate-500">등록된 접종 예약이 없습니다.</p>
+            )}
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 p-4">
+              <p className="text-sm font-semibold text-slate-900">접종 예약 목록</p>
+              <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                {vaccineAppointments.length === 0 ? (
+                  <li className="text-slate-500">접종 예약이 없습니다.</li>
+                ) : (
+                  vaccineAppointments.map((appointment) => (
+                    <li key={appointment.id} className="rounded-lg border border-slate-200 p-3">
+                      <p className="font-medium text-slate-900">
+                        {appointment.date} {appointment.time} · {appointment.title}
+                      </p>
+                      {appointment.description ? (
+                        <p className="mt-1 text-xs text-slate-500">{appointment.description}</p>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => toggleAppointmentComplete(appointment.id)}
+                        className={`mt-2 rounded px-2 py-1 text-xs font-semibold ${
+                          appointment.completed
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {appointment.completed ? "완료됨 (클릭 시 취소)" : "완료 처리"}
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <p className="text-sm font-semibold text-slate-900">접종 완료 이력</p>
+              <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                {planner.vaccineRecords.length === 0 ? (
+                  <li className="text-slate-500">접종 완료 기록이 없습니다.</li>
+                ) : (
+                  [...planner.vaccineRecords]
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .map((record) => (
+                      <li key={record.id} className="rounded-lg border border-slate-200 p-3">
+                        <p className="font-medium text-slate-900">{record.name}</p>
+                        <p className="text-xs text-slate-500">{record.date}</p>
+                        {record.note ? (
+                          <p className="mt-1 text-xs text-slate-500">{record.note}</p>
+                        ) : null}
+                      </li>
+                    ))
+                )}
+              </ul>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <section id="schedule" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-semibold text-slate-900">평일/주말 일정 템플릿</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          평일과 주말을 분리해서 루틴을 관리합니다. 선택한 날짜에는
+          <span className="font-semibold"> {dayOfWeek === "weekday" ? "평일" : "주말"}</span>
+          템플릿이 적용됩니다.
+        </p>
+
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-900">{selectedDate} 적용 일정</p>
+          <ul className="mt-2 space-y-1 text-sm text-slate-700">
+            {activeSchedule.length === 0 ? (
+              <li className="text-slate-500">등록된 일정이 없습니다.</li>
+            ) : (
+              activeSchedule.map((item) => (
+                <li key={item.id}>
+                  <span className="font-medium">{item.time}</span>
+                  <span className="mx-2 text-slate-400">·</span>
+                  {item.label}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 p-4">
+            <p className="text-sm font-semibold text-slate-900">일정 추가</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <label className="text-sm text-slate-700">
+                구분
+                <select
+                  value={scheduleDraft.type}
+                  onChange={(event) =>
+                    setScheduleDraft((prev) => ({
+                      ...prev,
+                      type: event.target.value as ScheduleType,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                >
+                  <option value="weekday">평일</option>
+                  <option value="weekend">주말</option>
+                </select>
+              </label>
+              <label className="text-sm text-slate-700">
+                시간
+                <input
+                  type="time"
+                  value={scheduleDraft.time}
+                  onChange={(event) =>
+                    setScheduleDraft((prev) => ({ ...prev, time: event.target.value }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm text-slate-700 md:col-span-1">
+                내용
+                <input
+                  value={scheduleDraft.label}
+                  onChange={(event) =>
+                    setScheduleDraft((prev) => ({ ...prev, label: event.target.value }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={addSchedule}
+              className="mt-3 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+            >
+              일정 항목 추가
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 p-4">
+            <p className="text-sm font-semibold text-slate-900">평일/주말 목록</p>
+            <div className="mt-3 grid gap-4 md:grid-cols-2">
+              {(["weekday", "weekend"] as ScheduleType[]).map((type) => (
+                <div key={type}>
+                  <p className="text-xs font-semibold text-slate-500">
+                    {type === "weekday" ? "평일" : "주말"}
+                  </p>
+                  <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                    {planner.schedules[type].length === 0 ? (
+                      <li className="text-slate-400">비어있음</li>
+                    ) : (
+                      planner.schedules[type].map((item) => (
+                        <li
+                          key={item.id}
+                          className="flex items-center justify-between rounded-lg border border-slate-200 p-2"
+                        >
+                          <span>
+                            {item.time} · {item.label}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeSchedule(type, item.id)}
+                            className="text-xs text-rose-600 hover:underline"
+                          >
+                            삭제
+                          </button>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="calendar" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">달력 보기</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              활동/예약/접종 기록을 날짜별로 한 번에 확인합니다.
+            </p>
+          </div>
+          <label className="text-sm text-slate-700">
+            월 선택
+            <input
+              type="month"
+              value={calendarMonth}
+              onChange={(event) => setCalendarMonth(event.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            />
+          </label>
+        </div>
+
+        <p className="mt-3 text-sm font-semibold text-slate-800">
+          {calendarYear}년 {calendarMonthNumber}월
+        </p>
+
+        <div className="mt-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-500">
+          {[
+            "일",
+            "월",
+            "화",
+            "수",
+            "목",
+            "금",
+            "토",
+          ].map((day) => (
+            <div key={day}>{day}</div>
+          ))}
+        </div>
+
+        <div className="mt-2 grid grid-cols-7 gap-2">
+          {calendarGrid.map((cell) => {
+            const events = calendarEventsByDate.get(cell.date);
+            const isSelected = cell.date === selectedDate;
+
+            return (
+              <button
+                type="button"
+                key={cell.date}
+                onClick={() => setSelectedDate(cell.date)}
+                className={`min-h-[86px] rounded-lg border p-2 text-left transition ${
+                  isSelected
+                    ? "border-sky-400 bg-sky-50"
+                    : cell.inMonth
+                      ? "border-slate-200 bg-white hover:bg-slate-50"
+                      : "border-slate-100 bg-slate-50 text-slate-400"
+                }`}
+              >
+                <p className="text-sm font-semibold">{cell.day}</p>
+                {events ? (
+                  <>
+                    <p className="mt-1 text-[11px] font-medium text-sky-700">
+                      이벤트 {events.count}건
+                    </p>
+                    {events.tags.map((tag) => (
+                      <p key={tag} className="truncate text-[10px] text-slate-600">
+                        · {tag}
+                      </p>
+                    ))}
+                  </>
+                ) : (
+                  <p className="mt-1 text-[10px] text-slate-400">기록 없음</p>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+        <h3 className="text-base font-semibold text-slate-900">현재 사용 가능한 기능</h3>
+        <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-700">
+          <li>보호자/피보호자 정보 입력 + 대상 유형(영유아/어르신) 전환</li>
+          <li>24시간 활동 기록 입력(식사/간식/낮잠/등원·하원/복약/병원/접종)</li>
+          <li>동그란 도넛 차트로 일일 활동 분포 시각화</li>
+          <li>접종 예약 + 접종 완료 이력 + 다음 예약 설명 확인</li>
+          <li>평일/주말 루틴 분리 관리</li>
+          <li>달력형 날짜별 이벤트 확인</li>
+          <li>비회원 상태에서도 전체 기능 테스트 가능(브라우저 저장)</li>
+        </ul>
+      </section>
+    </div>
+  );
+}
