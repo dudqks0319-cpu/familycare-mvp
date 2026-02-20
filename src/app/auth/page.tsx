@@ -45,11 +45,8 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
         <div className="mt-4 space-y-2.5">
           {!configured ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-              <p className="font-semibold">환경변수 설정 필요</p>
-              <p>
-                <code>NEXT_PUBLIC_SUPABASE_URL</code>, <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> 값을
-                .env.local에 추가해 주세요.
-              </p>
+              <p className="font-semibold">현재 로그인 서비스를 준비 중입니다.</p>
+              <p>조금만 기다려 주세요. 플래너는 로그인 없이도 바로 체험하실 수 있습니다.</p>
             </div>
           ) : null}
 

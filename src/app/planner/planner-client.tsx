@@ -1283,17 +1283,15 @@ export function PlannerClient() {
         </div>
       ) : null}
 
-      <section className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
+      <section className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-medium text-sky-800">
-            🧪 공개 테스트 모드 · 로그인 없이 주요 흐름을 바로 체험하실 수 있습니다.
-          </p>
+          <p className="text-[11px] font-medium text-sky-800">테스트 모드 · 브라우저 저장 · 초기화</p>
           <button
             type="button"
             onClick={resetPlanner}
-            className="rounded-md border border-sky-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-100"
+            className="rounded-md border border-sky-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-sky-800 hover:bg-sky-100"
           >
-            데이터 초기화
+            초기화
           </button>
         </div>
       </section>
@@ -1397,11 +1395,7 @@ export function PlannerClient() {
                   설정
                 </Link>
               </div>
-            ) : (
-              <p className="text-[11px] text-slate-500">
-                한눈에 보기 모드입니다. 상세 옵션이 필요할 때만 펼쳐서 사용하세요.
-              </p>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -1479,10 +1473,6 @@ export function PlannerClient() {
               {quickActionsExpanded ? "접기 ▲" : "펼치기 ▼"}
             </button>
           </div>
-          <p className="mt-1 rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
-            [퀵 노트 도움말] 빠른기록 버튼을 누르면 최근 패턴을 더 쉽게 남기실 수 있어요.
-          </p>
-
           {quickActionsExpanded ? (
             <div
               id="planner-quick-actions"
@@ -1590,7 +1580,6 @@ export function PlannerClient() {
             </button>
           ))}
         </div>
-        <p className="text-[11px] text-slate-400 md:hidden">탭을 좌우로 밀어 더 보실 수 있어요.</p>
       </section>
 
       {effectiveTab === "today" ? (
@@ -3104,7 +3093,7 @@ export function PlannerClient() {
       </section>
       ) : null}
 
-      <div className="fixed inset-x-0 bottom-3 z-30 px-4 md:hidden">
+      <div className="fixed inset-x-0 z-30 px-4 md:hidden" style={{ bottom: "calc(var(--fc-nav-height) + var(--fc-safe-bottom) + 10px)" }}>
         <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur">
           <div
             className="grid gap-1"
@@ -3127,21 +3116,7 @@ export function PlannerClient() {
         </div>
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-        <h3 className="text-base font-semibold text-slate-900">현재 사용 가능한 기능</h3>
-        <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-700">
-          <li>탭 기반 구조(오늘/기록/건강/일정/리포트)로 화면 분리</li>
-          <li>상단 요약 바(모바일 비고정 / 데스크톱 고정)</li>
-          <li>원탭 빠른기록(식사/수면/기저귀/복약/체온/등하원/병원)</li>
-          <li>수유 세분화 입력(모유 좌/우, 분유, 이유식)</li>
-          <li>수유/수면 타이머(시작/종료 후 소요시간 자동 기록)</li>
-          <li>일간/주간 요약 카드 + 24시간 패턴 차트 + 도넛 차트</li>
-          <li>복약 루틴 체크리스트 + 날짜별 복용 완료 처리</li>
-          <li>접종 예약 + 완료 이력 + 다음 접종 D-day 카드</li>
-          <li>평일/주말 루틴 분리 + 템플릿 복사 + 달력 보기</li>
-          <li>선택일 CSV 내보내기 + 비회원 공개 테스트 모드</li>
-        </ul>
-      </section>
+
     </div>
   );
 }

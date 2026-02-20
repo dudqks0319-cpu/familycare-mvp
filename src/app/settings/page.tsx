@@ -175,27 +175,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         </section>
       </div>
 
-      <nav className="fc-bottom-nav md:hidden">
-        <div className="mx-auto grid w-full max-w-sm grid-cols-4 px-2 py-1.5">
-          {[
-            { href: "/", label: "홈", icon: "🏠" },
-            { href: "/dashboard", label: "대시보드", icon: "📊" },
-            { href: "/planner", label: "기록", icon: "📝" },
-            { href: "/settings", label: "설정", icon: "⚙️" },
-          ].map((tab) => (
-            <Link
-              key={tab.label}
-              href={tab.href}
-              className={`flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-semibold ${
-                tab.href === "/settings" ? "text-blue-600" : "text-[var(--fc-text-sub)]"
-              }`}
-            >
-              <span className="text-lg">{tab.icon}</span>
-              {tab.label}
-            </Link>
-          ))}
-        </div>
-      </nav>
     </main>
   );
 }

@@ -114,10 +114,17 @@ function toMaskedUserId(userId: string): string {
 }
 
 function buildInviteUrl(token: string): string {
-  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(
-    /\/$/,
-    "",
-  );
+  const rawBaseUrl =
+    process.env.NEXT_PUBLIC_SITE_URL
+    || process.env.VERCEL_PROJECT_PRODUCTION_URL
+    || process.env.VERCEL_URL
+    || "http://localhost:3000";
+
+  const normalizedBaseUrl = rawBaseUrl.startsWith("http")
+    ? rawBaseUrl
+    : `https://${rawBaseUrl}`;
+
+  const baseUrl = normalizedBaseUrl.replace(/\/$/, "");
 
   return `${baseUrl}/invite?token=${token}`;
 }
@@ -209,29 +216,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           />
         </div>
       </div>
-
-      {/* ── 하단 탭바 (모바일) ── */}
-      <nav className="fc-bottom-nav md:hidden">
-        <div className="mx-auto grid w-full max-w-sm grid-cols-4 px-2 py-1.5">
-          {[
-            { href: "/", label: "홈", icon: "🏠" },
-            { href: "/dashboard", label: "대시보드", icon: "📊" },
-            { href: "/planner", label: "기록", icon: "📝" },
-            { href: "/settings", label: "설정", icon: "⚙️" },
-          ].map((tab) => (
-            <Link
-              key={tab.label}
-              href={tab.href}
-              className={`flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-semibold ${
-                tab.href === "/dashboard" ? "text-blue-600" : "text-[var(--fc-text-sub)]"
-              }`}
-            >
-              <span className="text-lg">{tab.icon}</span>
-              {tab.label}
-            </Link>
-          ))}
-        </div>
-      </nav>
     </main>
   );
 }
@@ -376,138 +360,140 @@ function DashboardContent({
 
                 <div className="mt-5 grid gap-4 lg:grid-cols-2">
                   <section className="rounded-2xl border border-[var(--fc-border)] bg-[var(--fc-bg)] p-4">
-                    <h4 className="text-sm font-semibold text-slate-900">돌봄 멤버</h4>
-                    <ul className="mt-3 space-y-2 text-xs text-slate-700">
-                      {bundle.members.length === 0 ? (
-                        <li className="text-slate-500">등록된 멤버가 없습니다.</li>
-                      ) : (
-                        bundle.members.map((member) => (
-                          <li
-                            key={`${member.recipient_id}-${member.user_id}`}
-                            className="rounded-lg border border-slate-200 px-3 py-2"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div>
-                                <p className="font-medium">{toMaskedUserId(member.user_id)}</p>
-                                <p className="text-slate-500">
-                                  관계: {member.relationship || "미정"} · 권한:{" "}
-                                  {member.can_edit ? "편집 가능" : "조회 전용"}
-                                </p>
-                              </div>
-                              <div className="flex flex-wrap gap-1">
-                                <form action={updateRecipientMemberPermissionAction}>
-                                  <input
-                                    type="hidden"
-                                    name="recipientId"
-                                    value={member.recipient_id}
-                                  />
-                                  <input type="hidden" name="userId" value={member.user_id} />
-                                  <input
-                                    type="hidden"
-                                    name="canEdit"
-                                    value={member.can_edit ? "false" : "true"}
-                                  />
-                                  <button
-                                    type="submit"
-                                    className="rounded border border-slate-300 px-2 py-1 text-[11px] hover:bg-slate-50"
-                                  >
-                                    {member.can_edit ? "편집권한 해제" : "편집권한 부여"}
-                                  </button>
-                                </form>
-                                {member.user_id !== sessionUserId ? (
-                                  <form action={removeRecipientMemberAction}>
+                    <h4 className="text-sm font-semibold text-slate-900">관리 항목</h4>
+                    <p className="mt-1 text-xs text-slate-500">모바일 기본은 접힘 상태입니다. 필요한 항목만 펼쳐서 사용하세요.</p>
+
+                    <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                      <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
+                        멤버 관리
+                      </summary>
+                      <ul className="mt-3 space-y-2 text-xs text-slate-700">
+                        {bundle.members.length === 0 ? (
+                          <li className="text-slate-500">등록된 멤버가 없습니다.</li>
+                        ) : (
+                          bundle.members.map((member) => (
+                            <li
+                              key={`${member.recipient_id}-${member.user_id}`}
+                              className="rounded-lg border border-slate-200 px-3 py-2"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <p className="font-medium">{toMaskedUserId(member.user_id)}</p>
+                                  <p className="text-slate-500">
+                                    관계: {member.relationship || "미정"} · 권한:{" "}
+                                    {member.can_edit ? "편집 가능" : "조회 전용"}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  <form action={updateRecipientMemberPermissionAction}>
+                                    <input type="hidden" name="recipientId" value={member.recipient_id} />
+                                    <input type="hidden" name="userId" value={member.user_id} />
                                     <input
                                       type="hidden"
-                                      name="recipientId"
-                                      value={member.recipient_id}
+                                      name="canEdit"
+                                      value={member.can_edit ? "false" : "true"}
                                     />
-                                    <input type="hidden" name="userId" value={member.user_id} />
                                     <button
                                       type="submit"
-                                      className="rounded border border-rose-300 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                                      className="rounded border border-slate-300 px-2 py-1 text-[11px] hover:bg-slate-50"
                                     >
-                                      제거
+                                      {member.can_edit ? "편집권한 해제" : "편집권한 부여"}
                                     </button>
                                   </form>
-                                ) : null}
-                              </div>
-                            </div>
-                          </li>
-                        ))
-                      )}
-                    </ul>
-
-                    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-xs font-semibold text-slate-800">초대 링크 목록</p>
-                      <ul className="mt-2 space-y-2 text-[11px] text-slate-700">
-                        {bundle.invites.length === 0 ? (
-                          <li className="text-slate-500">아직 생성된 초대 링크가 없습니다.</li>
-                        ) : (
-                          bundle.invites.slice(0, 5).map((invite) => {
-                            const inviteUrl = buildInviteUrl(invite.invite_token);
-                            const isPending = invite.status === "pending";
-
-                            return (
-                              <li
-                                key={invite.id}
-                                className="rounded border border-slate-200 bg-white p-2"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div>
-                                    <p className="font-medium">{invite.invited_email}</p>
-                                    <p className="text-slate-500">
-                                      상태: {statusLabel(invite.status)} · 만료: {formatDateTime(invite.expires_at)}
-                                    </p>
-                                  </div>
-                                  {isPending ? (
-                                    <form action={revokeRecipientInviteAction}>
-                                      <input type="hidden" name="inviteId" value={invite.id} />
+                                  {member.user_id !== sessionUserId ? (
+                                    <form action={removeRecipientMemberAction}>
+                                      <input type="hidden" name="recipientId" value={member.recipient_id} />
+                                      <input type="hidden" name="userId" value={member.user_id} />
                                       <button
                                         type="submit"
                                         className="rounded border border-rose-300 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
                                       >
-                                        초대 취소
+                                        제거
                                       </button>
                                     </form>
                                   ) : null}
                                 </div>
-                                <div className="mt-2 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] break-all">
-                                  {inviteUrl}
-                                </div>
-                                <CopyButton text={inviteUrl} />
-                              </li>
-                            );
-                          })
+                              </div>
+                            </li>
+                          ))
                         )}
                       </ul>
-                    </div>
+                    </details>
 
-                    <form action={createRecipientInviteAction} className="mt-3 space-y-2">
-                      <input type="hidden" name="recipientId" value={bundle.recipient.id} />
-                      <input
-                        type="email"
-                        name="invitedEmail"
-                        placeholder="초대할 가족 이메일"
-                        className="w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 text-sm"
-                        required
-                      />
-                      <input
-                        name="relationship"
-                        placeholder="관계 (예: 딸, 간병인)"
-                        className="w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 text-sm"
-                      />
-                      <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" name="canEdit" /> 편집 권한 허용
-                      </label>
-                      <button
-                        type="submit"
-                        className="fc-btn bg-slate-900 px-3 text-sm text-white hover:bg-slate-700"
-                      >
-                        이메일 초대 링크 생성
-                      </button>
-                    </form>
+                    <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                      <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
+                        초대 링크 / 가족 초대
+                      </summary>
+
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-xs font-semibold text-slate-800">초대 링크 목록</p>
+                        <ul className="mt-2 space-y-2 text-[11px] text-slate-700">
+                          {bundle.invites.length === 0 ? (
+                            <li className="text-slate-500">아직 생성된 초대 링크가 없습니다.</li>
+                          ) : (
+                            bundle.invites.slice(0, 5).map((invite) => {
+                              const inviteUrl = buildInviteUrl(invite.invite_token);
+                              const isPending = invite.status === "pending";
+
+                              return (
+                                <li key={invite.id} className="rounded border border-slate-200 bg-white p-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                      <p className="font-medium">{invite.invited_email}</p>
+                                      <p className="text-slate-500">
+                                        상태: {statusLabel(invite.status)} · 만료:{" "}
+                                        {formatDateTime(invite.expires_at)}
+                                      </p>
+                                    </div>
+                                    {isPending ? (
+                                      <form action={revokeRecipientInviteAction}>
+                                        <input type="hidden" name="inviteId" value={invite.id} />
+                                        <button
+                                          type="submit"
+                                          className="rounded border border-rose-300 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                                        >
+                                          초대 취소
+                                        </button>
+                                      </form>
+                                    ) : null}
+                                  </div>
+                                  <div className="mt-2 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] break-all">
+                                    {inviteUrl}
+                                  </div>
+                                  <CopyButton text={inviteUrl} />
+                                </li>
+                              );
+                            })
+                          )}
+                        </ul>
+                      </div>
+
+                      <form action={createRecipientInviteAction} className="mt-3 space-y-2">
+                        <input type="hidden" name="recipientId" value={bundle.recipient.id} />
+                        <input
+                          type="email"
+                          name="invitedEmail"
+                          placeholder="초대할 가족 이메일"
+                          className="w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                          required
+                        />
+                        <input
+                          name="relationship"
+                          placeholder="관계 (예: 딸, 간병인)"
+                          className="w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        />
+                        <label className="flex items-center gap-2 text-sm text-slate-700">
+                          <input type="checkbox" name="canEdit" /> 편집 권한 허용
+                        </label>
+                        <button
+                          type="submit"
+                          className="fc-btn bg-slate-900 px-3 text-sm text-white hover:bg-slate-700"
+                        >
+                          이메일 초대 링크 생성
+                        </button>
+                      </form>
+                    </details>
                   </section>
-
                   <section className="rounded-2xl border border-[var(--fc-border)] bg-[var(--fc-bg)] p-4">
                     <h4 className="text-sm font-semibold text-slate-900">복약 일정</h4>
                     <ul className="mt-3 space-y-2 text-xs text-slate-700">
