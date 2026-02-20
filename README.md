@@ -31,6 +31,7 @@
 - `/planner` : 영유아/어르신 맞춤 돌봄 플래너 (원탭 기록/기저귀·체온·투약/수유 세분화/수유·수면 타이머/복약 체크리스트/일·주간 요약/CSV 내보내기/접종 D-day/도넛·24시간 패턴 차트/달력/주중·주말)
 - `/invite` : 이메일 초대 링크 수락
 - `/settings` : 계정/프로필 설정
+- `/fridge` : 우리집 냉장고를 부탁해 (식재료/유통기한/메뉴 추천)
 - `/api/dashboard` : 대시보드 JSON (테스트 모드/인증 모드)
 
 ## 로컬 실행
@@ -74,6 +75,7 @@ PUBLIC_TEST_MODE=on
    - `supabase/migrations/202602201045_recipient_invites.sql`
    - `supabase/migrations/202602201105_prevent_duplicate_pending_invites.sql`
    - `supabase/migrations/202602201220_care_planner_domain.sql`
+   - `supabase/migrations/202602201955_fridge_mvp.sql`
 
 ## Supabase Provider 설정 (Google / Kakao)
 

@@ -6,7 +6,7 @@ const HOME_QUICK_MENUS = [
   { href: "/planner", label: "오늘 기록", icon: "✏️", tone: "bg-indigo-50 text-indigo-500" },
   { href: "/planner", label: "일정·접종", icon: "📅", tone: "bg-red-50 text-red-500" },
   { href: "/dashboard", label: "돌봄 관리", icon: "📊", tone: "bg-sky-50 text-sky-500" },
-  { href: "/dashboard", label: "복약 체크", icon: "💊", tone: "bg-pink-50 text-pink-500" },
+  { href: "/fridge", label: "냉장고 앱", icon: "🧊", tone: "bg-cyan-50 text-cyan-600" },
   { href: "/invite", label: "가족 초대", icon: "👨‍👩‍👧", tone: "bg-lime-50 text-lime-500" },
   { href: "/settings", label: "설정", icon: "⚙️", tone: "bg-emerald-50 text-emerald-500" },
 ] as const;
