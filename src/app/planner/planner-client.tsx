@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type RecipientType = "child" | "elder";
@@ -78,18 +79,7 @@ type PlannerState = {
   };
 };
 
-type MenuItem = {
-  id:
-    | "overview"
-    | "timeline"
-    | "daycare"
-    | "medication"
-    | "hospital"
-    | "vaccine"
-    | "schedule"
-    | "calendar";
-  label: string;
-};
+type PlannerTab = "today" | "record" | "health" | "schedule" | "report";
 
 type FeedingType = "breast_left" | "breast_right" | "formula" | "baby_food";
 
@@ -179,23 +169,12 @@ const CATEGORY_META: Record<
   },
 };
 
-const CHILD_MENU: MenuItem[] = [
-  { id: "overview", label: "대상자 정보" },
-  { id: "timeline", label: "24시간 기록" },
-  { id: "daycare", label: "어린이집" },
-  { id: "medication", label: "복약" },
-  { id: "vaccine", label: "접종" },
-  { id: "schedule", label: "평일/주말" },
-  { id: "calendar", label: "달력" },
-];
-
-const ELDER_MENU: MenuItem[] = [
-  { id: "overview", label: "대상자 정보" },
-  { id: "timeline", label: "24시간 기록" },
-  { id: "medication", label: "복약" },
-  { id: "hospital", label: "병원" },
-  { id: "schedule", label: "평일/주말" },
-  { id: "calendar", label: "달력" },
+const PLANNER_TABS: Array<{ id: PlannerTab; label: string }> = [
+  { id: "today", label: "오늘" },
+  { id: "record", label: "기록" },
+  { id: "health", label: "건강" },
+  { id: "schedule", label: "일정" },
+  { id: "report", label: "리포트" },
 ];
 
 const VACCINE_HELP: Record<string, string> = {
@@ -225,17 +204,6 @@ function toTimeKey(date: Date): string {
 
 function toDateTimeKey(date: string, time: string): string {
   return `${date}T${time}:00`;
-}
-
-function scrollToSection(sectionId: MenuItem["id"]): void {
-  if (typeof document === "undefined") {
-    return;
-  }
-
-  document.getElementById(sectionId)?.scrollIntoView({
-    behavior: "smooth",
-    block: "start",
-  });
 }
 
 function sortByDateTimeAsc<T extends { date: string; time: string }>(rows: T[]): T[] {
@@ -517,6 +485,7 @@ function getCalendarGrid(year: number, monthIndex: number): Array<{
 export function PlannerClient() {
   const [planner, setPlanner] = useState<PlannerState>(loadPlannerState);
   const [selectedDate, setSelectedDate] = useState<string>(() => toDateKey(new Date()));
+  const [activeTab, setActiveTab] = useState<PlannerTab>("today");
   const [calendarMonth, setCalendarMonth] = useState<string>(() => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
@@ -609,8 +578,6 @@ export function PlannerClient() {
   const selectedCategory = availableCategories.includes(activityDraft.category)
     ? activityDraft.category
     : availableCategories[0] ?? "meal";
-
-  const menuItems = planner.recipientType === "child" ? CHILD_MENU : ELDER_MENU;
 
   const dayActivities = useMemo(
     () =>
@@ -821,6 +788,64 @@ export function PlannerClient() {
   const timerElapsedSeconds = activeTimer
     ? Math.max(0, Math.floor((timerNow - activeTimer.startedAt) / 1000))
     : 0;
+
+  const visibleTabs =
+    planner.recipientType === "elder"
+      ? PLANNER_TABS.filter((tab) => ["today", "health", "schedule"].includes(tab.id))
+      : PLANNER_TABS;
+
+  const effectiveTab: PlannerTab =
+    planner.recipientType === "elder" && ["record", "report"].includes(activeTab)
+      ? "today"
+      : activeTab;
+
+  const nextTodoItems = useMemo(() => {
+    const todos: Array<{
+      type: "medication" | "vaccine" | "hospital";
+      title: string;
+      description: string;
+      severity: "critical" | "warning";
+    }> = [];
+
+    const pendingRoutine = medicationRoutines.find(
+      (routine) => !routine.takenDates.includes(selectedDate),
+    );
+
+    if (pendingRoutine) {
+      todos.push({
+        type: "medication",
+        title: `복약 미완료 · ${pendingRoutine.time} ${pendingRoutine.name}`,
+        description: pendingRoutine.note || "복약 체크리스트에서 완료 처리해 주세요.",
+        severity: "critical",
+      });
+    }
+
+    if (nextVaccineAppointment) {
+      todos.push({
+        type: "vaccine",
+        title: `${nextVaccineAppointment.title} ${getDDayLabel(nextVaccineAppointment.date)}`,
+        description: `${nextVaccineAppointment.date} ${nextVaccineAppointment.time}`,
+        severity: "warning",
+      });
+    }
+
+    const nextHospital = hospitalAppointments.find((appointment) => !appointment.completed);
+    if (nextHospital) {
+      todos.push({
+        type: "hospital",
+        title: `병원 일정 · ${nextHospital.title}`,
+        description: `${nextHospital.date} ${nextHospital.time}`,
+        severity: "warning",
+      });
+    }
+
+    return todos.slice(0, 3);
+  }, [
+    hospitalAppointments,
+    medicationRoutines,
+    nextVaccineAppointment,
+    selectedDate,
+  ]);
 
   const addActivity = () => {
     const title = activityDraft.title.trim() || CATEGORY_META[selectedCategory].label;
@@ -1281,48 +1306,32 @@ export function PlannerClient() {
         </div>
       </section>
 
-      <section className="flex flex-wrap gap-2">
-        {menuItems.map((menu) => (
-          <button
-            key={menu.id}
-            type="button"
-            onClick={() => scrollToSection(menu.id)}
-            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-          >
-            {menu.label}
-          </button>
-        ))}
-      </section>
+      <section className="sticky top-0 z-20 space-y-3 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm text-slate-500">오늘의 대상자</p>
+            <p className="text-lg font-semibold text-slate-900">
+              {planner.recipientType === "child" ? "👶" : "🧓"} {planner.recipientName || "대상자"}
+              <span className="ml-2 text-sm font-medium text-slate-500">({planner.ageMonths}개월)</span>
+            </p>
+            <p className="text-xs text-slate-500">
+              보호자 {planner.guardianName || "보호자"} · {planner.recipientType === "child" ? "영유아/어린이" : "어르신"}
+            </p>
+          </div>
 
-      <section id="overview" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900">보호자 · 피보호자 설정</h3>
-        <p className="mt-1 text-sm text-slate-600">
-          돌봄대상자 유형(영유아/어르신)에 따라 메뉴가 바뀝니다.
-        </p>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <label className="text-sm text-slate-700">
-            보호자 이름
-            <input
-              value={planner.guardianName}
-              onChange={(event) =>
-                setPlanner((prev) => ({ ...prev, guardianName: event.target.value }))
-              }
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            피보호자 이름
-            <input
-              value={planner.recipientName}
-              onChange={(event) =>
-                setPlanner((prev) => ({ ...prev, recipientName: event.target.value }))
-              }
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            대상 유형
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-sm text-slate-700">
+              날짜
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(event) => {
+                  setSelectedDate(event.target.value);
+                  setActivityDraft((prev) => ({ ...prev, date: event.target.value }));
+                }}
+                className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </label>
             <select
               value={planner.recipientType}
               onChange={(event) =>
@@ -1331,31 +1340,29 @@ export function PlannerClient() {
                   recipientType: event.target.value as RecipientType,
                 }))
               }
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"
             >
-              <option value="child">영유아/어린이</option>
-              <option value="elder">어르신</option>
+              <option value="child">영유아 모드</option>
+              <option value="elder">어르신 모드</option>
             </select>
-          </label>
-          <label className="text-sm text-slate-700">
-            나이(개월)
-            <input
-              type="number"
-              min={0}
-              value={planner.ageMonths}
-              onChange={(event) =>
-                setPlanner((prev) => ({
-                  ...prev,
-                  ageMonths: Number.parseInt(event.target.value || "0", 10),
-                }))
-              }
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-            />
-          </label>
+            <button
+              type="button"
+              onClick={exportSelectedDateCsv}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              CSV
+            </button>
+            <Link
+              href="/settings"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              설정
+            </Link>
+          </div>
         </div>
 
         {planner.recipientType === "elder" ? (
-          <label className="mt-4 flex items-center gap-2 text-sm font-medium text-slate-700">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
             <input
               type="checkbox"
               checked={planner.elderLargeText}
@@ -1364,20 +1371,161 @@ export function PlannerClient() {
               }
               className="h-4 w-4"
             />
-            어르신 가독성 모드(큰 글씨) 사용
+            어르신 가독성 모드(큰 글씨)
           </label>
         ) : null}
 
-        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-          <p>
-            현재: <span className="font-semibold">{planner.guardianName || "보호자"}</span> 님이
-            <span className="font-semibold"> {planner.recipientName || "대상자"}</span>
-            ({planner.recipientType === "child" ? "영유아/어린이" : "어르신"})를 돌보고 있습니다.
-          </p>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {planner.recipientType === "child" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => addQuickActivity("meal", "빠른기록 · 식사")}
+                className="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm text-sky-700"
+              >
+                🍼 식사
+              </button>
+              <button
+                type="button"
+                onClick={() => addQuickActivity("nap", "빠른기록 · 수면")}
+                className="shrink-0 rounded-full border border-violet-300 bg-violet-50 px-3 py-1.5 text-sm text-violet-700"
+              >
+                😴 수면
+              </button>
+              <button
+                type="button"
+                onClick={() => addQuickActivity("diaper", "빠른기록 · 기저귀(소변)")}
+                className="shrink-0 rounded-full border border-lime-300 bg-lime-50 px-3 py-1.5 text-sm text-lime-700"
+              >
+                🩲 기저귀
+              </button>
+              <button
+                type="button"
+                onClick={() => addQuickActivity("temperature", "빠른기록 · 체온 측정", `${temperatureDraft.celsius}°C`) }
+                className="shrink-0 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-700"
+              >
+                🌡️ 체온
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => addQuickActivity("meal", "빠른기록 · 식사")}
+                className="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm text-sky-700"
+              >
+                🍚 식사
+              </button>
+              <button
+                type="button"
+                onClick={() => addQuickActivity("medication", "빠른기록 · 복약 완료")}
+                className="shrink-0 rounded-full border border-pink-300 bg-pink-50 px-3 py-1.5 text-sm text-pink-700"
+              >
+                💊 복약
+              </button>
+              <button
+                type="button"
+                onClick={() => addQuickActivity("hospital", "빠른기록 · 병원 방문")}
+                className="shrink-0 rounded-full border border-rose-300 bg-rose-50 px-3 py-1.5 text-sm text-rose-700"
+              >
+                🏥 병원
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {visibleTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`rounded-full px-4 py-2 text-sm font-medium ${
+                effectiveTab === tab.id
+                  ? "bg-slate-900 text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </section>
 
-      <section id="timeline" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      {effectiveTab === "today" ? (
+        <section className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">오늘 요약</h3>
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                <p className="text-xl font-bold text-slate-900">{daySummary.byCategory.meal}</p>
+                <p className="text-xs text-slate-500">식사</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                <p className="text-xl font-bold text-slate-900">{daySummary.byCategory.nap}</p>
+                <p className="text-xs text-slate-500">수면</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                <p className="text-xl font-bold text-slate-900">{daySummary.byCategory.diaper}</p>
+                <p className="text-xs text-slate-500">기저귀</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                <p className="text-xl font-bold text-slate-900">{daySummary.byCategory.temperature}</p>
+                <p className="text-xs text-slate-500">체온</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">오늘 타임라인</h3>
+            <ul className="mt-3 space-y-2 text-sm text-slate-700">
+              {dayActivities.length === 0 ? (
+                <li className="rounded-lg border border-dashed border-slate-300 p-3 text-slate-500">
+                  오늘 기록이 없습니다.
+                </li>
+              ) : (
+                dayActivities.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className={`rounded-lg border-l-4 p-3 ${CATEGORY_META[entry.category].badgeClass}`}
+                  >
+                    <p className="font-medium text-slate-900">
+                      {entry.time} · {entry.title}
+                    </p>
+                    {entry.notes ? <p className="mt-1 text-xs text-slate-600">{entry.notes}</p> : null}
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">다음 할 일</h3>
+            <div className="mt-3 space-y-2 text-sm">
+              {nextTodoItems.length === 0 ? (
+                <p className="rounded-lg border border-slate-200 p-3 text-slate-500">현재 예정된 알림이 없습니다.</p>
+              ) : (
+                nextTodoItems.map((todo) => (
+                  <div
+                    key={`${todo.type}-${todo.title}`}
+                    className={`rounded-lg p-3 ${
+                      todo.severity === "critical"
+                        ? "border border-rose-300 bg-rose-50 text-rose-800"
+                        : "border border-amber-300 bg-amber-50 text-amber-800"
+                    }`}
+                  >
+                    <p className="font-semibold">{todo.title}</p>
+                    <p className="text-xs">{todo.description}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {effectiveTab === "record" ? (
+        <section id="timeline" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">24시간 활동 기록</h3>
@@ -1886,8 +2034,9 @@ export function PlannerClient() {
           </div>
         </div>
       </section>
+      ) : null}
 
-      {planner.recipientType === "child" ? (
+      {effectiveTab === "health" && planner.recipientType === "child" ? (
         <section id="daycare" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900">어린이집 등·하원</h3>
           <p className="mt-1 text-sm text-slate-600">
@@ -1913,6 +2062,7 @@ export function PlannerClient() {
         </section>
       ) : null}
 
+      {effectiveTab === "health" ? (
       <section id="medication" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-900">복약 관리</h3>
         <p className="mt-1 text-sm text-slate-600">
@@ -2061,8 +2211,9 @@ export function PlannerClient() {
           </ul>
         </div>
       </section>
+      ) : null}
 
-      {planner.recipientType === "elder" ? (
+      {effectiveTab === "health" && planner.recipientType === "elder" ? (
         <section id="hospital" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900">병원 예약</h3>
           <p className="mt-1 text-sm text-slate-600">
@@ -2156,7 +2307,7 @@ export function PlannerClient() {
         </section>
       ) : null}
 
-      {planner.recipientType === "child" ? (
+      {effectiveTab === "health" && planner.recipientType === "child" ? (
         <section id="vaccine" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900">접종 관리</h3>
           <p className="mt-1 text-sm text-slate-600">
@@ -2356,6 +2507,7 @@ export function PlannerClient() {
         </section>
       ) : null}
 
+      {effectiveTab === "schedule" ? (
       <section id="schedule" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-900">평일/주말 일정 템플릿</h3>
         <p className="mt-1 text-sm text-slate-600">
@@ -2486,7 +2638,9 @@ export function PlannerClient() {
           </div>
         </div>
       </section>
+      ) : null}
 
+      {effectiveTab === "schedule" ? (
       <section id="calendar" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -2562,21 +2716,112 @@ export function PlannerClient() {
           })}
         </div>
       </section>
+      ) : null}
+
+      {effectiveTab === "report" ? (
+      <section className="space-y-4">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-900">리포트 요약</h3>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-900">일간 요약</p>
+              <p className="mt-2 text-sm text-slate-700">총 기록 {daySummary.total}건</p>
+              <p className="text-xs text-slate-500">
+                식사 {daySummary.byCategory.meal} · 수면 {daySummary.byCategory.nap} · 기저귀 {daySummary.byCategory.diaper} · 복약 {daySummary.byCategory.medication}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-900">주간 복약 달성률</p>
+              <p className="mt-2 text-2xl font-bold text-slate-900">{weekSummary.medicationRate}%</p>
+              <p className="text-xs text-slate-500">
+                {weekSummary.checkedMedicationCount}/{weekSummary.medicationTargetCount}회 완료
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-900">활동 분포 도넛 차트</h3>
+          <div className="mt-4 grid gap-6 lg:grid-cols-[260px_1fr]">
+            <div className="flex justify-center">
+              <svg width="180" height="180" viewBox="0 0 180 180" aria-label="활동 분포">
+                <g transform="translate(90 90) rotate(-90)">
+                  <circle r="62" cx="0" cy="0" fill="none" stroke="#e2e8f0" strokeWidth="20" />
+                  {chartSlices.length > 0
+                    ? (() => {
+                        const circumference = 2 * Math.PI * 62;
+                        let offset = 0;
+
+                        return chartSlices.map((slice) => {
+                          const length = slice.percent * circumference;
+                          const rendered = (
+                            <circle
+                              key={slice.category}
+                              r="62"
+                              cx="0"
+                              cy="0"
+                              fill="none"
+                              stroke={CATEGORY_META[slice.category].color}
+                              strokeWidth="20"
+                              strokeDasharray={`${length} ${circumference - length}`}
+                              strokeDashoffset={-offset}
+                              strokeLinecap="butt"
+                            />
+                          );
+                          offset += length;
+                          return rendered;
+                        });
+                      })()
+                    : null}
+                </g>
+                <text x="90" y="84" textAnchor="middle" className="fill-slate-500 text-xs">
+                  총 활동
+                </text>
+                <text x="90" y="106" textAnchor="middle" className="fill-slate-900 text-lg font-semibold">
+                  {donutTotal}건
+                </text>
+              </svg>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <p className="text-sm font-semibold text-slate-900">24시간 패턴 차트</p>
+              <div className="mt-3 grid gap-1.5">
+                {hourlyActivityCounts.map((count, hour) => {
+                  const widthRatio = count === 0 ? 4 : Math.max(8, (count / maxHourlyActivityCount) * 100);
+
+                  return (
+                    <div key={hour} className="grid grid-cols-[42px_1fr_32px] items-center gap-2 text-xs text-slate-600">
+                      <span>{String(hour).padStart(2, "0")}시</span>
+                      <div className="h-2 rounded-full bg-slate-200">
+                        <div
+                          className="h-2 rounded-full bg-sky-500"
+                          style={{ width: `${widthRatio}%` }}
+                        />
+                      </div>
+                      <span className="text-right font-medium">{count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+      ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
         <h3 className="text-base font-semibold text-slate-900">현재 사용 가능한 기능</h3>
         <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-700">
-          <li>보호자/피보호자 정보 입력 + 대상 유형(영유아/어르신) 전환</li>
-          <li>원탭 빠른기록(식사/낮잠/복약/체온/등하원/병원/기저귀) + 24시간 활동 기록</li>
+          <li>탭 기반 구조(오늘/기록/건강/일정/리포트)로 화면 분리</li>
+          <li>상단 고정 바(대상자 요약 + 날짜 + 원탭 빠른기록 + 설정 이동)</li>
+          <li>원탭 빠른기록(식사/수면/기저귀/복약/체온/등하원/병원)</li>
           <li>수유 세분화 입력(모유 좌/우, 분유, 이유식)</li>
           <li>수유/수면 타이머(시작/종료 후 소요시간 자동 기록)</li>
-          <li>어르신 가독성 모드(큰 글씨) 지원</li>
+          <li>일간/주간 요약 카드 + 24시간 패턴 차트 + 도넛 차트</li>
           <li>복약 루틴 체크리스트 + 날짜별 복용 완료 처리</li>
-          <li>동그란 도넛 차트로 일일 활동 분포 시각화</li>
-          <li>접종 예약 + 접종 완료 이력 + 다음 접종 D-day 카드</li>
-          <li>평일/주말 루틴 분리 + 템플릿 복사</li>
-          <li>달력형 날짜별 이벤트 확인</li>
-          <li>비회원 상태에서도 전체 기능 테스트 가능(브라우저 저장)</li>
+          <li>접종 예약 + 완료 이력 + 다음 접종 D-day 카드</li>
+          <li>평일/주말 루틴 분리 + 템플릿 복사 + 달력 보기</li>
+          <li>선택일 CSV 내보내기 + 비회원 공개 테스트 모드</li>
         </ul>
       </section>
     </div>
