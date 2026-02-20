@@ -202,6 +202,13 @@ export function PlannerClient() {
 
     return window.innerWidth >= 768;
   });
+  const [headerToolsExpanded, setHeaderToolsExpanded] = useState<boolean>(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return window.innerWidth >= 1024;
+  });
   const [reportView, setReportView] = useState<"daily" | "weekly" | "interval">("daily");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeoutRef = useRef<number | null>(null);
@@ -512,6 +519,21 @@ export function PlannerClient() {
     nextVaccineAppointment,
     selectedDate,
   ]);
+
+  const latestDayActivity = dayActivities[dayActivities.length - 1] ?? null;
+
+  const glanceSummary = useMemo(() => {
+    const dailyTarget = planner.recipientType === "child" ? 8 : 6;
+    const progressRate = Math.min(100, Math.round((daySummary.total / dailyTarget) * 100));
+
+    return {
+      latestRecord: latestDayActivity
+        ? `${latestDayActivity.time} · ${latestDayActivity.title}`
+        : "오늘 첫 기록을 남겨보세요",
+      progressLabel: `${progressRate}% (${daySummary.total}/${dailyTarget})`,
+      nextTask: nextTodoItems[0]?.title ?? "예정된 할 일이 없습니다",
+    };
+  }, [daySummary.total, latestDayActivity, nextTodoItems, planner.recipientType]);
 
   const recentActivityByCategory = useMemo(() => {
     const sorted = [...planner.activities].sort((a, b) =>
@@ -1261,20 +1283,17 @@ export function PlannerClient() {
         </div>
       ) : null}
 
-      <section className="rounded-2xl border border-sky-200 bg-sky-50 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-sky-900">임시 공개 테스트 모드</h2>
-            <p className="mt-1 text-sm text-sky-800">
-              로그인 없이 전체 기능 테스트 가능 · 브라우저 로컬 저장소에 저장됩니다.
-            </p>
-          </div>
+      <section className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-medium text-sky-800">
+            🧪 공개 테스트 모드 · 로그인 없이 주요 흐름을 바로 체험하실 수 있습니다.
+          </p>
           <button
             type="button"
             onClick={resetPlanner}
-            className="rounded-lg border border-sky-300 bg-white px-3 py-2 text-sm font-medium text-sky-800 hover:bg-sky-100"
+            className="rounded-md border border-sky-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-100"
           >
-            샘플 데이터로 초기화
+            데이터 초기화
           </button>
         </div>
       </section>
@@ -1292,79 +1311,112 @@ export function PlannerClient() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div
-              role="radiogroup"
-              aria-label="빠른 날짜 선택"
-              className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1"
-            >
-              {quickDateOptions.map((option) => (
-                <button
-                  key={option.label}
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedDate === option.date}
-                  onClick={() => applySelectedDate(option.date)}
-                  className={`rounded-full px-2.5 py-1.5 text-xs font-medium transition ${
-                    selectedDate === option.date
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-600 hover:bg-slate-200"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                role="radiogroup"
+                aria-label="빠른 날짜 선택"
+                className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1"
+              >
+                {quickDateOptions.map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    role="radio"
+                    aria-checked={selectedDate === option.date}
+                    onClick={() => applySelectedDate(option.date)}
+                    className={`rounded-full px-2.5 py-1.5 text-xs font-medium transition ${
+                      selectedDate === option.date
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setHeaderToolsExpanded((prev) => !prev)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
+              >
+                상세 설정 {headerToolsExpanded ? "▲" : "▼"}
+              </button>
             </div>
-            <label className="text-sm text-slate-700">
-              날짜
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(event) => applySelectedDate(event.target.value)}
-                className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-              />
-            </label>
-            <select
-              value={planner.recipientType}
-              onChange={(event) => {
-                const nextRecipientType = event.target.value as RecipientType;
 
-                setPlanner((prev) => ({
-                  ...prev,
-                  recipientType: nextRecipientType,
-                }));
+            {headerToolsExpanded ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                <label className="text-sm text-slate-700">
+                  날짜
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(event) => applySelectedDate(event.target.value)}
+                    className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                  />
+                </label>
+                <select
+                  value={planner.recipientType}
+                  onChange={(event) => {
+                    const nextRecipientType = event.target.value as RecipientType;
 
-                const nextCategories = getAvailableCategories(nextRecipientType);
-                setActivityDraft((prev) => ({
-                  ...prev,
-                  category: nextCategories[0] ?? "meal",
-                }));
+                    setPlanner((prev) => ({
+                      ...prev,
+                      recipientType: nextRecipientType,
+                    }));
 
-                if (
-                  nextRecipientType === "elder"
-                  && !["today", "health", "schedule"].includes(activeTab)
-                ) {
-                  setActiveTab("today");
-                }
-              }}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"
-            >
-              <option value="child">영유아 모드</option>
-              <option value="elder">어르신 모드</option>
-            </select>
-            <button
-              type="button"
-              onClick={exportSelectedDateCsv}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-            >
-              CSV
-            </button>
-            <Link
-              href="/settings"
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-            >
-              설정
-            </Link>
+                    const nextCategories = getAvailableCategories(nextRecipientType);
+                    setActivityDraft((prev) => ({
+                      ...prev,
+                      category: nextCategories[0] ?? "meal",
+                    }));
+
+                    if (
+                      nextRecipientType === "elder"
+                      && !["today", "health", "schedule"].includes(activeTab)
+                    ) {
+                      setActiveTab("today");
+                    }
+                  }}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                >
+                  <option value="child">영유아 모드</option>
+                  <option value="elder">어르신 모드</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={exportSelectedDateCsv}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                >
+                  CSV
+                </button>
+                <Link
+                  href="/settings"
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                >
+                  설정
+                </Link>
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-500">
+                한눈에 보기 모드입니다. 상세 옵션이 필요할 때만 펼쳐서 사용하세요.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-white/70 bg-white p-3">
+            <p className="text-[11px] font-semibold text-slate-500">최근 기록</p>
+            <p className="mt-1 break-words text-sm font-semibold text-slate-900">{glanceSummary.latestRecord}</p>
+          </div>
+          <div className="rounded-xl border border-white/70 bg-white p-3">
+            <p className="text-[11px] font-semibold text-slate-500">오늘 진행률</p>
+            <p className="mt-1 break-words text-sm font-semibold text-slate-900">{glanceSummary.progressLabel}</p>
+          </div>
+          <div className="rounded-xl border border-white/70 bg-white p-3">
+            <p className="text-[11px] font-semibold text-slate-500">다음 할 일</p>
+            <p className="mt-1 break-words text-sm font-semibold text-slate-900">{glanceSummary.nextTask}</p>
           </div>
         </div>
 
@@ -3054,7 +3106,10 @@ export function PlannerClient() {
 
       <div className="fixed inset-x-0 bottom-3 z-30 px-4 md:hidden">
         <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur">
-          <div className="grid grid-cols-5 gap-1">
+          <div
+            className="grid gap-1"
+            style={{ gridTemplateColumns: `repeat(${visibleTabs.length}, minmax(0, 1fr))` }}
+          >
             {visibleTabs.map((tab) => (
               <button
                 key={`bottom-${tab.id}`}
