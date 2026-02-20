@@ -5,6 +5,7 @@ import { createHash, randomBytes } from "node:crypto";
 export const OAUTH_CODE_VERIFIER_COOKIE_NAME = "familycare_oauth_verifier";
 export const OAUTH_STATE_COOKIE_NAME = "familycare_oauth_state";
 export const OAUTH_PROVIDER_COOKIE_NAME = "familycare_oauth_provider";
+export const OAUTH_REDIRECT_COOKIE_NAME = "familycare_oauth_redirect";
 
 export const OAUTH_COOKIE_MAX_AGE_SECONDS = 60 * 10;
 

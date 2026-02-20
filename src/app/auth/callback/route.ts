@@ -10,6 +10,7 @@ import {
 import {
   OAUTH_CODE_VERIFIER_COOKIE_NAME,
   OAUTH_PROVIDER_COOKIE_NAME,
+  OAUTH_REDIRECT_COOKIE_NAME,
   OAUTH_STATE_COOKIE_NAME,
 } from "@/lib/oauth-pkce";
 import {
@@ -24,6 +25,18 @@ function buildAuthErrorRedirect(requestUrl: string, message: string): URL {
   return redirectUrl;
 }
 
+function normalizeRedirectPath(input: string | undefined): string {
+  if (!input) {
+    return "/dashboard";
+  }
+
+  if (!input.startsWith("/") || input.startsWith("//")) {
+    return "/dashboard";
+  }
+
+  return input;
+}
+
 function clearOAuthCookies(response: NextResponse): void {
   response.cookies.set(OAUTH_CODE_VERIFIER_COOKIE_NAME, "", {
     path: "/",
@@ -34,6 +47,10 @@ function clearOAuthCookies(response: NextResponse): void {
     maxAge: 0,
   });
   response.cookies.set(OAUTH_PROVIDER_COOKIE_NAME, "", {
+    path: "/",
+    maxAge: 0,
+  });
+  response.cookies.set(OAUTH_REDIRECT_COOKIE_NAME, "", {
     path: "/",
     maxAge: 0,
   });
@@ -74,6 +91,7 @@ export async function GET(request: Request) {
   const cookieState = cookieStore.get(OAUTH_STATE_COOKIE_NAME)?.value;
   const codeVerifier = cookieStore.get(OAUTH_CODE_VERIFIER_COOKIE_NAME)?.value;
   const provider = cookieStore.get(OAUTH_PROVIDER_COOKIE_NAME)?.value;
+  const redirectPath = cookieStore.get(OAUTH_REDIRECT_COOKIE_NAME)?.value;
 
   if (!code || !state || !cookieState || !codeVerifier || !provider) {
     return errorRedirect(
@@ -102,7 +120,8 @@ export async function GET(request: Request) {
       codeVerifier,
     });
 
-    const response = NextResponse.redirect(new URL("/dashboard", request.url));
+    const destinationPath = normalizeRedirectPath(redirectPath);
+    const response = NextResponse.redirect(new URL(destinationPath, request.url));
     setAuthCookie(response, session);
     clearOAuthCookies(response);
     return response;

@@ -13,6 +13,7 @@ import {
   toggleMedicationScheduleAction,
   updateRecipientMemberPermissionAction,
 } from "@/app/dashboard/actions";
+import { CopyButton } from "@/app/dashboard/components/copy-button";
 import { requireAuthSession } from "@/lib/auth-session";
 import { getDashboardData } from "@/lib/familycare-db";
 import { isSupabaseConfigured } from "@/lib/supabase-rest";
@@ -81,6 +82,21 @@ function formatDateOnly(dateValue: string | null): string {
     dateStyle: "medium",
     timeZone: "Asia/Seoul",
   }).format(new Date(`${dateValue}T00:00:00`));
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case "pending":
+      return "수락 대기";
+    case "accepted":
+      return "수락 완료";
+    case "revoked":
+      return "취소됨";
+    case "expired":
+      return "만료";
+    default:
+      return status;
+  }
 }
 
 function toMaskedUserId(userId: string): string {
@@ -185,10 +201,14 @@ async function DashboardContent({ sessionUserId }: { sessionUserId: string }) {
         <StatCard
           label="활성 복약 일정"
           value={`${dashboardData.stats.activeMedicationCount}개`}
+          variant={
+            dashboardData.stats.activeMedicationCount > 0 ? "default" : "warning"
+          }
         />
         <StatCard
           label="오늘 체크인"
           value={`${dashboardData.stats.todayCheckinCount}건`}
+          variant={dashboardData.stats.todayCheckinCount > 0 ? "success" : "warning"}
         />
         <StatCard
           label="오늘 복약 완료율"
@@ -196,6 +216,15 @@ async function DashboardContent({ sessionUserId }: { sessionUserId: string }) {
             dashboardData.stats.todayMedicationTakenRate === null
               ? "기록 없음"
               : `${dashboardData.stats.todayMedicationTakenRate}%`
+          }
+          variant={
+            dashboardData.stats.todayMedicationTakenRate === null
+              ? "default"
+              : dashboardData.stats.todayMedicationTakenRate >= 80
+                ? "success"
+                : dashboardData.stats.todayMedicationTakenRate >= 50
+                  ? "warning"
+                  : "danger"
           }
         />
       </section>
@@ -371,7 +400,7 @@ async function DashboardContent({ sessionUserId }: { sessionUserId: string }) {
                                   <div>
                                     <p className="font-medium">{invite.invited_email}</p>
                                     <p className="text-slate-500">
-                                      상태: {invite.status} · 만료: {formatDateTime(invite.expires_at)}
+                                      상태: {statusLabel(invite.status)} · 만료: {formatDateTime(invite.expires_at)}
                                     </p>
                                   </div>
                                   {isPending ? (
@@ -389,6 +418,7 @@ async function DashboardContent({ sessionUserId }: { sessionUserId: string }) {
                                 <div className="mt-2 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] break-all">
                                   {inviteUrl}
                                 </div>
+                                <CopyButton text={inviteUrl} />
                               </li>
                             );
                           })
@@ -692,11 +722,26 @@ async function DashboardContent({ sessionUserId }: { sessionUserId: string }) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({
+  label,
+  value,
+  variant = "default",
+}: {
+  label: string;
+  value: string;
+  variant?: "default" | "success" | "warning" | "danger";
+}) {
+  const variantClassMap = {
+    default: "border-slate-200 bg-white text-slate-900",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    warning: "border-amber-200 bg-amber-50 text-amber-800",
+    danger: "border-rose-200 bg-rose-50 text-rose-800",
+  } as const;
+
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+    <article className={`rounded-xl border p-4 shadow-sm ${variantClassMap[variant]}`}>
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold">{value}</p>
     </article>
   );
 }

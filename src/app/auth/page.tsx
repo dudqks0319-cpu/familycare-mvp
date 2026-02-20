@@ -28,6 +28,7 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
   const mode = readParam(params, "mode") === "signup" ? "signup" : "login";
   const error = readParam(params, "error");
   const message = readParam(params, "message");
+  const redirectTo = readParam(params, "redirect");
   const configured = isSupabaseConfigured();
 
   return (
@@ -72,6 +73,7 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
         >
           <h2 className="mb-4 text-lg font-semibold text-slate-900">로그인</h2>
           <form action={loginAction} className="space-y-4">
+            {redirectTo ? <input type="hidden" name="redirect" value={redirectTo} /> : null}
             <label className="block text-sm text-slate-700">
               이메일
               <input
@@ -105,6 +107,7 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
             <p className="text-xs font-medium text-slate-500">소셜 로그인 (Supabase OAuth)</p>
             <form action={startOAuthAction}>
               <input type="hidden" name="provider" value="google" />
+              {redirectTo ? <input type="hidden" name="redirect" value={redirectTo} /> : null}
               <button
                 type="submit"
                 className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
@@ -114,6 +117,7 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
             </form>
             <form action={startOAuthAction}>
               <input type="hidden" name="provider" value="kakao" />
+              {redirectTo ? <input type="hidden" name="redirect" value={redirectTo} /> : null}
               <button
                 type="submit"
                 className="w-full rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm font-semibold text-yellow-900 hover:bg-yellow-100"
@@ -136,6 +140,7 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
         >
           <h2 className="mb-4 text-lg font-semibold text-slate-900">회원가입</h2>
           <form action={signupAction} className="space-y-4">
+            {redirectTo ? <input type="hidden" name="redirect" value={redirectTo} /> : null}
             <label className="block text-sm text-slate-700">
               이메일
               <input

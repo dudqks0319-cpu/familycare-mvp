@@ -442,42 +442,64 @@ export async function createRecipientInvite(
 ): Promise<RecipientInvite> {
   const inviteToken = randomUUID();
 
-  const rows = await supabaseRequest<RecipientInvite[]>(session, "recipient_invites", {
-    method: "POST",
-    body: {
-      recipient_id: input.recipientId,
-      invited_email: input.invitedEmail.trim().toLowerCase(),
-      relationship: input.relationship?.trim() || null,
-      can_edit: input.canEdit,
-      invited_by: session.userId,
-      invite_token: inviteToken,
-      status: "pending",
-    },
-  });
+  try {
+    const rows = await supabaseRequest<RecipientInvite[]>(
+      session,
+      "recipient_invites",
+      {
+        method: "POST",
+        body: {
+          recipient_id: input.recipientId,
+          invited_email: input.invitedEmail.trim().toLowerCase(),
+          relationship: input.relationship?.trim() || null,
+          can_edit: input.canEdit,
+          invited_by: session.userId,
+          invite_token: inviteToken,
+          status: "pending",
+        },
+      },
+    );
 
-  const invite = rows[0];
+    const invite = rows[0];
 
-  if (!invite) {
-    throw new Error("초대 링크 생성에 실패했습니다.");
+    if (!invite) {
+      throw new Error("초대 링크 생성에 실패했습니다.");
+    }
+
+    return invite;
+  } catch (error) {
+    if (error instanceof Error && /duplicate/i.test(error.message)) {
+      throw new Error(
+        "이미 대기 중인 초대가 있습니다. 기존 초대를 취소하거나 재사용해 주세요.",
+      );
+    }
+
+    throw error;
   }
-
-  return invite;
 }
 
 export async function revokeRecipientInvite(
   session: AuthSession,
   inviteId: string,
 ): Promise<void> {
-  await supabaseRequest<RecipientInvite[]>(session, "recipient_invites", {
-    method: "PATCH",
-    query: {
-      id: `eq.${inviteId}`,
-      status: "eq.pending",
+  const rows = await supabaseRequest<RecipientInvite[]>(
+    session,
+    "recipient_invites",
+    {
+      method: "PATCH",
+      query: {
+        id: `eq.${inviteId}`,
+        status: "eq.pending",
+      },
+      body: {
+        status: "revoked",
+      },
     },
-    body: {
-      status: "revoked",
-    },
-  });
+  );
+
+  if (!rows.length) {
+    throw new Error("초대를 취소할 수 없습니다. 이미 처리되었거나 권한이 없습니다.");
+  }
 }
 
 export async function getRecipientInviteByToken(

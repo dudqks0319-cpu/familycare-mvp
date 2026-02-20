@@ -64,6 +64,7 @@ SESSION_ENCRYPTION_KEY=<32자 이상 랜덤 문자열>
    - `supabase/migrations/202602200910_week2_features.sql`
    - `supabase/migrations/202602200920_recipient_delete_policy.sql`
    - `supabase/migrations/202602201045_recipient_invites.sql`
+   - `supabase/migrations/202602201105_prevent_duplicate_pending_invites.sql`
 
 ## Supabase Provider 설정 (Google / Kakao)
 

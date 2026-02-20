@@ -14,6 +14,7 @@ import {
   OAUTH_CODE_VERIFIER_COOKIE_NAME,
   OAUTH_COOKIE_MAX_AGE_SECONDS,
   OAUTH_PROVIDER_COOKIE_NAME,
+  OAUTH_REDIRECT_COOKIE_NAME,
   OAUTH_STATE_COOKIE_NAME,
 } from "@/lib/oauth-pkce";
 import {
@@ -46,10 +47,27 @@ function buildRedirect(
   return `${url}&${messageKey}=${encodeURIComponent(message)}`;
 }
 
+function normalizeRedirectPath(input: string): string {
+  if (!input) {
+    return "/dashboard";
+  }
+
+  if (!input.startsWith("/")) {
+    return "/dashboard";
+  }
+
+  if (input.startsWith("//")) {
+    return "/dashboard";
+  }
+
+  return input;
+}
+
 async function setOAuthTempCookies(params: {
   provider: string;
   codeVerifier: string;
   state: string;
+  redirectPath: string;
 }): Promise<void> {
   const cookieStore = await cookies();
   const secure = process.env.NODE_ENV === "production";
@@ -77,6 +95,14 @@ async function setOAuthTempCookies(params: {
     path: "/",
     maxAge: OAUTH_COOKIE_MAX_AGE_SECONDS,
   });
+
+  cookieStore.set(OAUTH_REDIRECT_COOKIE_NAME, params.redirectPath, {
+    httpOnly: true,
+    secure,
+    sameSite: "lax",
+    path: "/",
+    maxAge: OAUTH_COOKIE_MAX_AGE_SECONDS,
+  });
 }
 
 export async function startOAuthAction(formData: FormData): Promise<void> {
@@ -91,6 +117,7 @@ export async function startOAuthAction(formData: FormData): Promise<void> {
   }
 
   const provider = asString(formData.get("provider")).toLowerCase();
+  const redirectPath = normalizeRedirectPath(asString(formData.get("redirect")));
 
   if (!isOAuthProvider(provider)) {
     redirect(
@@ -109,6 +136,7 @@ export async function startOAuthAction(formData: FormData): Promise<void> {
     provider,
     codeVerifier,
     state,
+    redirectPath,
   });
 
   const authorizeUrl = buildOAuthAuthorizeUrl({
@@ -134,6 +162,7 @@ export async function loginAction(formData: FormData): Promise<void> {
 
   const email = asString(formData.get("email")).toLowerCase();
   const password = asString(formData.get("password"));
+  const redirectPath = normalizeRedirectPath(asString(formData.get("redirect")));
 
   if (!email || !password) {
     redirect(
@@ -148,7 +177,7 @@ export async function loginAction(formData: FormData): Promise<void> {
   try {
     const session = await signInWithPassword({ email, password });
     await setAuthSessionCookie(session);
-    redirect("/dashboard");
+    redirect(redirectPath);
   } catch (error) {
     redirect(
       buildRedirect("/auth?mode=login", "error", getSafeErrorMessage(error)),
@@ -169,6 +198,7 @@ export async function signupAction(formData: FormData): Promise<void> {
 
   const email = asString(formData.get("email")).toLowerCase();
   const password = asString(formData.get("password"));
+  const redirectPath = normalizeRedirectPath(asString(formData.get("redirect")));
 
   if (!email || !password) {
     redirect(
@@ -195,7 +225,7 @@ export async function signupAction(formData: FormData): Promise<void> {
 
     if (session) {
       await setAuthSessionCookie(session);
-      redirect("/dashboard");
+      redirect(redirectPath);
     }
 
     redirect(
@@ -223,6 +253,7 @@ export async function logoutAction(): Promise<void> {
   cookieStore.delete(OAUTH_CODE_VERIFIER_COOKIE_NAME);
   cookieStore.delete(OAUTH_STATE_COOKIE_NAME);
   cookieStore.delete(OAUTH_PROVIDER_COOKIE_NAME);
+  cookieStore.delete(OAUTH_REDIRECT_COOKIE_NAME);
 
   await clearAuthSessionCookie();
   redirect("/auth?mode=login&message=로그아웃되었습니다.");
