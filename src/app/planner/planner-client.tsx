@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import {
   CATEGORY_META,
@@ -33,6 +33,12 @@ import {
   toDateKey,
   toTimeKey,
 } from "@/app/planner/utils";
+
+const QUICK_DATE_BUTTONS = [
+  { label: "어제", offset: -1 },
+  { label: "오늘", offset: 0 },
+  { label: "내일", offset: 1 },
+] as const;
 
 export function PlannerClient() {
   const [planner, setPlanner] = useState<PlannerState>(loadPlannerState);
@@ -151,6 +157,26 @@ export function PlannerClient() {
       toastTimeoutRef.current = null;
     }, 3000);
   };
+
+  const applySelectedDate = (nextDate: string) => {
+    setSelectedDate(nextDate);
+    setActivityDraft((prev) => ({ ...prev, date: nextDate }));
+  };
+
+  const quickDateOptions = useMemo(() => {
+    const base = new Date(`${selectedDate}T00:00:00`);
+    const baseDate = Number.isNaN(base.getTime()) ? new Date() : base;
+
+    return QUICK_DATE_BUTTONS.map((option) => {
+      const nextDate = new Date(baseDate);
+      nextDate.setDate(baseDate.getDate() + option.offset);
+
+      return {
+        label: option.label,
+        date: toDateKey(nextDate),
+      };
+    });
+  }, [selectedDate]);
 
   const availableCategories = useMemo(
     () => getAvailableCategories(planner.recipientType),
@@ -836,6 +862,59 @@ export function PlannerClient() {
   const getTabId = (tabId: PlannerTab) => `planner-tab-${tabId}`;
   const getPanelId = (tabId: PlannerTab) => `planner-panel-${tabId}`;
 
+  const focusTabByIndex = (index: number) => {
+    const nextTab = visibleTabs[index];
+
+    if (!nextTab) {
+      return;
+    }
+
+    setActiveTab(nextTab.id);
+
+    window.requestAnimationFrame(() => {
+      const element = document.getElementById(getTabId(nextTab.id));
+      element?.focus();
+      element?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    });
+  };
+
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, tabId: PlannerTab) => {
+    const currentIndex = visibleTabs.findIndex((tab) => tab.id === tabId);
+
+    if (currentIndex < 0) {
+      return;
+    }
+
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      focusTabByIndex((currentIndex + 1) % visibleTabs.length);
+      return;
+    }
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      focusTabByIndex((currentIndex - 1 + visibleTabs.length) % visibleTabs.length);
+      return;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      focusTabByIndex(0);
+      return;
+    }
+
+    if (event.key === "End") {
+      event.preventDefault();
+      focusTabByIndex(visibleTabs.length - 1);
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setActiveTab(tabId);
+    }
+  };
+
   return (
     <div
       className={`space-y-6 ${
@@ -844,6 +923,18 @@ export function PlannerClient() {
           : ""
       }`}
     >
+      {toastMessage ? (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-40 flex justify-center px-4">
+          <div
+            role="status"
+            aria-live="polite"
+            className="max-w-sm rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white shadow-lg"
+          >
+            {toastMessage}
+          </div>
+        </div>
+      ) : null}
+
       <section className="rounded-2xl border border-sky-200 bg-sky-50 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -876,26 +967,60 @@ export function PlannerClient() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <div
+              role="radiogroup"
+              aria-label="빠른 날짜 선택"
+              className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1"
+            >
+              {quickDateOptions.map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedDate === option.date}
+                  onClick={() => applySelectedDate(option.date)}
+                  className={`rounded-full px-2.5 py-1.5 text-xs font-medium transition ${
+                    selectedDate === option.date
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
             <label className="text-sm text-slate-700">
               날짜
               <input
                 type="date"
                 value={selectedDate}
-                onChange={(event) => {
-                  setSelectedDate(event.target.value);
-                  setActivityDraft((prev) => ({ ...prev, date: event.target.value }));
-                }}
+                onChange={(event) => applySelectedDate(event.target.value)}
                 className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
               />
             </label>
             <select
               value={planner.recipientType}
-              onChange={(event) =>
+              onChange={(event) => {
+                const nextRecipientType = event.target.value as RecipientType;
+
                 setPlanner((prev) => ({
                   ...prev,
-                  recipientType: event.target.value as RecipientType,
-                }))
-              }
+                  recipientType: nextRecipientType,
+                }));
+
+                const nextCategories = getAvailableCategories(nextRecipientType);
+                setActivityDraft((prev) => ({
+                  ...prev,
+                  category: nextCategories[0] ?? "meal",
+                }));
+
+                if (
+                  nextRecipientType === "elder"
+                  && !["today", "health", "schedule"].includes(activeTab)
+                ) {
+                  setActiveTab("today");
+                }
+              }}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"
             >
               <option value="child">영유아 모드</option>
@@ -941,35 +1066,38 @@ export function PlannerClient() {
               aria-controls="planner-quick-actions"
               className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
             >
-              {quickActionsExpanded ? "접기" : "펼치기"}
+              {quickActionsExpanded ? "접기 ▲" : "펼치기 ▼"}
             </button>
           </div>
 
           {quickActionsExpanded ? (
-            <div id="planner-quick-actions" className="mt-2 flex gap-2 overflow-x-auto pb-1">
+            <div
+              id="planner-quick-actions"
+              className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4 md:flex md:gap-2 md:overflow-x-auto pb-1"
+            >
               {planner.recipientType === "child" ? (
                 <>
                   <button
                     type="button"
                     onClick={() => addQuickActivity("meal", "빠른기록 · 식사")}
-                    aria-label="빠른기록 식사"
-                    className="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-700"
+                    aria-label="빠른기록 식사 추가"
+                    className="shrink-0 rounded-full border border-sky-300 bg-sky-50 min-h-[48px] px-3 py-3 text-sm text-sky-700 transition-transform active:scale-95"
                   >
                     🍼 식사
                   </button>
                   <button
                     type="button"
                     onClick={() => addQuickActivity("nap", "빠른기록 · 수면")}
-                    aria-label="빠른기록 수면"
-                    className="shrink-0 rounded-full border border-violet-300 bg-violet-50 px-3 py-2 text-sm text-violet-700"
+                    aria-label="빠른기록 수면 추가"
+                    className="shrink-0 rounded-full border border-violet-300 bg-violet-50 min-h-[48px] px-3 py-3 text-sm text-violet-700 transition-transform active:scale-95"
                   >
                     😴 수면
                   </button>
                   <button
                     type="button"
                     onClick={() => addQuickActivity("diaper", "빠른기록 · 기저귀(소변)")}
-                    aria-label="빠른기록 기저귀"
-                    className="shrink-0 rounded-full border border-lime-300 bg-lime-50 px-3 py-2 text-sm text-lime-700"
+                    aria-label="빠른기록 기저귀 추가"
+                    className="shrink-0 rounded-full border border-lime-300 bg-lime-50 min-h-[48px] px-3 py-3 text-sm text-lime-700 transition-transform active:scale-95"
                   >
                     🩲 기저귀
                   </button>
@@ -978,8 +1106,8 @@ export function PlannerClient() {
                     onClick={() =>
                       addQuickActivity("temperature", "빠른기록 · 체온 측정", `${temperatureDraft.celsius}°C`)
                     }
-                    aria-label="빠른기록 체온"
-                    className="shrink-0 rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700"
+                    aria-label="빠른기록 체온 추가"
+                    className="shrink-0 rounded-full border border-amber-300 bg-amber-50 min-h-[48px] px-3 py-3 text-sm text-amber-700 transition-transform active:scale-95"
                   >
                     🌡️ 체온
                   </button>
@@ -989,24 +1117,24 @@ export function PlannerClient() {
                   <button
                     type="button"
                     onClick={() => addQuickActivity("meal", "빠른기록 · 식사")}
-                    aria-label="빠른기록 식사"
-                    className="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-700"
+                    aria-label="빠른기록 식사 추가"
+                    className="shrink-0 rounded-full border border-sky-300 bg-sky-50 min-h-[48px] px-3 py-3 text-sm text-sky-700 transition-transform active:scale-95"
                   >
                     🍚 식사
                   </button>
                   <button
                     type="button"
                     onClick={() => addQuickActivity("medication", "빠른기록 · 복약 완료")}
-                    aria-label="빠른기록 복약"
-                    className="shrink-0 rounded-full border border-pink-300 bg-pink-50 px-3 py-2 text-sm text-pink-700"
+                    aria-label="빠른기록 복약 추가"
+                    className="shrink-0 rounded-full border border-pink-300 bg-pink-50 min-h-[48px] px-3 py-3 text-sm text-pink-700 transition-transform active:scale-95"
                   >
                     💊 복약
                   </button>
                   <button
                     type="button"
                     onClick={() => addQuickActivity("hospital", "빠른기록 · 병원 방문")}
-                    aria-label="빠른기록 병원 방문"
-                    className="shrink-0 rounded-full border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+                    aria-label="빠른기록 병원 방문 추가"
+                    className="shrink-0 rounded-full border border-rose-300 bg-rose-50 min-h-[48px] px-3 py-3 text-sm text-rose-700 transition-transform active:scale-95"
                   >
                     🏥 병원
                   </button>
@@ -1017,7 +1145,7 @@ export function PlannerClient() {
         </div>
 
         <div
-          className="flex gap-2 overflow-x-auto pb-1 md:flex-wrap"
+          className="flex gap-1.5 overflow-x-auto snap-x snap-mandatory pb-1 [-webkit-mask-image:linear-gradient(to_right,black_85%,transparent)] [mask-image:linear-gradient(to_right,black_85%,transparent)] md:flex-wrap md:[-webkit-mask-image:none] md:[mask-image:none]"
           role="tablist"
           aria-label="플래너 탭"
         >
@@ -1027,10 +1155,19 @@ export function PlannerClient() {
               id={getTabId(tab.id)}
               type="button"
               role="tab"
+              tabIndex={effectiveTab === tab.id ? 0 : -1}
               aria-selected={effectiveTab === tab.id}
               aria-controls={getPanelId(tab.id)}
               onClick={() => setActiveTab(tab.id)}
-              className={`rounded-full px-4 py-2 text-sm font-medium ${
+              onKeyDown={(event) => handleTabKeyDown(event, tab.id)}
+              onFocus={(event) => {
+                event.currentTarget.scrollIntoView({
+                  behavior: "smooth",
+                  block: "nearest",
+                  inline: "center",
+                });
+              }}
+              className={`snap-start shrink-0 min-h-[44px] min-w-[64px] rounded-full px-4 py-2.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 ${
                 effectiveTab === tab.id
                   ? "bg-slate-900 text-white"
                   : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -1040,10 +1177,17 @@ export function PlannerClient() {
             </button>
           ))}
         </div>
+        <p className="text-[11px] text-slate-400 md:hidden">탭을 좌우로 밀어 더 보실 수 있어요.</p>
       </section>
 
       {effectiveTab === "today" ? (
-        <section className="space-y-4">
+        <section
+          id={getPanelId("today")}
+          role="tabpanel"
+          aria-labelledby={getTabId("today")}
+          tabIndex={0}
+          className="space-y-4"
+        >
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">오늘 요약</h3>
             <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -1115,7 +1259,13 @@ export function PlannerClient() {
       ) : null}
 
       {effectiveTab === "record" ? (
-        <section id="timeline" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section
+          id={getPanelId("record")}
+          role="tabpanel"
+          aria-labelledby={getTabId("record")}
+          tabIndex={0}
+          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+        >
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">24시간 활동 기록</h3>
@@ -1129,10 +1279,7 @@ export function PlannerClient() {
               <input
                 type="date"
                 value={selectedDate}
-                onChange={(event) => {
-                  setSelectedDate(event.target.value);
-                  setActivityDraft((prev) => ({ ...prev, date: event.target.value }));
-                }}
+                onChange={(event) => applySelectedDate(event.target.value)}
                 className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
               />
             </label>
@@ -1653,7 +1800,13 @@ export function PlannerClient() {
       ) : null}
 
       {effectiveTab === "health" ? (
-      <section id="medication" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section
+        id={getPanelId("health")}
+        role="tabpanel"
+        aria-labelledby={getTabId("health")}
+        tabIndex={0}
+        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+      >
         <h3 className="text-lg font-semibold text-slate-900">복약 관리</h3>
         <p className="mt-1 text-sm text-slate-600">
           복약 루틴 체크리스트와 활동기록 기반 복약 로그를 함께 관리합니다.
@@ -2098,7 +2251,13 @@ export function PlannerClient() {
       ) : null}
 
       {effectiveTab === "schedule" ? (
-      <section id="schedule" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section
+        id={getPanelId("schedule")}
+        role="tabpanel"
+        aria-labelledby={getTabId("schedule")}
+        tabIndex={0}
+        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+      >
         <h3 className="text-lg font-semibold text-slate-900">평일/주말 일정 템플릿</h3>
         <p className="mt-1 text-sm text-slate-600">
           평일과 주말을 분리해서 루틴을 관리합니다. 선택한 날짜에는
@@ -2277,7 +2436,7 @@ export function PlannerClient() {
               <button
                 type="button"
                 key={cell.date}
-                onClick={() => setSelectedDate(cell.date)}
+                onClick={() => applySelectedDate(cell.date)}
                 className={`min-h-[86px] rounded-lg border p-2 text-left transition ${
                   isSelected
                     ? "border-sky-400 bg-sky-50"
@@ -2309,7 +2468,13 @@ export function PlannerClient() {
       ) : null}
 
       {effectiveTab === "report" ? (
-      <section className="space-y-4">
+      <section
+        id={getPanelId("report")}
+        role="tabpanel"
+        aria-labelledby={getTabId("report")}
+        tabIndex={0}
+        className="space-y-4"
+      >
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900">리포트 요약</h3>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -2397,14 +2562,6 @@ export function PlannerClient() {
           </div>
         </section>
       </section>
-      ) : null}
-
-      {toastMessage ? (
-        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
-          <div className="max-w-sm rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg">
-            {toastMessage}
-          </div>
-        </div>
       ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
