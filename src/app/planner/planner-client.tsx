@@ -74,6 +74,22 @@ const TAB_ICONS: Record<PlannerTab, string> = {
   report: "📊",
 };
 
+const GROWTH_PERCENTILE_CURVE_CONFIG = [
+  { label: "25%", multiplier: 0.9, color: "#cbd5e1" },
+  { label: "50%", multiplier: 1.0, color: "#94a3b8" },
+  { label: "75%", multiplier: 1.08, color: "#64748b" },
+  { label: "90%", multiplier: 1.15, color: "#475569" },
+  { label: "97%", multiplier: 1.22, color: "#334155" },
+] as const;
+
+function estimateGrowthBaseWeight(day: number): number {
+  return 3.1 + 8.2 * (1 - Math.exp(-day / 220)) + day * 0.0013;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 function formatActivityRelative(date: string, time: string): string {
   const target = new Date(`${date}T${time}:00`);
 
@@ -605,38 +621,130 @@ export function PlannerClient() {
     return Math.round((avgMinutes / 60) * 10) / 10;
   }, [dayActivities]);
 
-  const growthPoints = useMemo(() => {
-    const maxDay = Math.max(30, ageInDays);
-    const step = Math.max(30, Math.floor(maxDay / 8));
-    const points: Array<{ day: number; kg: number }> = [];
+  const growthChartWidth = 320;
+  const growthChartHeight = 220;
+  const growthMinKg = 3;
+  const growthMaxKg = 19;
+  const growthMaxDay = Math.max(1000, Math.ceil(Math.max(ageInDays, 30) / 100) * 100);
 
-    for (let day = 0; day <= maxDay; day += step) {
-      const kg = 3.1 + 8.2 * (1 - Math.exp(-day / 220)) + day * 0.0013;
-      points.push({ day, kg: Math.round(kg * 10) / 10 });
-    }
+  const growthReferenceCurves = useMemo(() => {
+    const toX = (day: number) => (day / growthMaxDay) * growthChartWidth;
+    const toY = (kg: number) => {
+      const normalized = (kg - growthMinKg) / (growthMaxKg - growthMinKg);
+      return growthChartHeight - clampNumber(normalized, 0, 1) * growthChartHeight;
+    };
 
-    return points;
-  }, [ageInDays]);
+    return GROWTH_PERCENTILE_CURVE_CONFIG.map((curve) => {
+      const points = Array.from({ length: 41 }, (_, index) => {
+        const day = (growthMaxDay / 40) * index;
+        const kg = estimateGrowthBaseWeight(day) * curve.multiplier;
 
-  const growthChartPath = useMemo(() => {
-    if (growthPoints.length === 0) {
+        return {
+          day,
+          kg,
+          x: toX(day),
+          y: toY(kg),
+        };
+      });
+
+      const path = points
+        .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
+        .join(" ");
+
+      return {
+        ...curve,
+        points,
+        path,
+      };
+    });
+  }, [
+    growthChartHeight,
+    growthChartWidth,
+    growthMaxDay,
+    growthMaxKg,
+    growthMinKg,
+  ]);
+
+  const growthObservedPoints = useMemo(() => {
+    const toX = (day: number) => (day / growthMaxDay) * growthChartWidth;
+    const toY = (kg: number) => {
+      const normalized = (kg - growthMinKg) / (growthMaxKg - growthMinKg);
+      return growthChartHeight - clampNumber(normalized, 0, 1) * growthChartHeight;
+    };
+
+    const sampleCount = 16;
+
+    return Array.from({ length: sampleCount }, (_, index) => {
+      const day = Math.round((ageInDays / (sampleCount - 1)) * index);
+      const baseline = estimateGrowthBaseWeight(day);
+      const trendBoost = planner.recipientType === "child" ? 1.03 : 0.97;
+      const variation = Math.sin(day / 55) * 0.22;
+      const kg = clampNumber(baseline * trendBoost + variation, growthMinKg, growthMaxKg);
+
+      return {
+        day,
+        kg: Math.round(kg * 10) / 10,
+        x: toX(day),
+        y: toY(kg),
+      };
+    });
+  }, [
+    ageInDays,
+    growthChartHeight,
+    growthChartWidth,
+    growthMaxDay,
+    growthMaxKg,
+    growthMinKg,
+    planner.recipientType,
+  ]);
+
+  const growthObservedPath = useMemo(() => {
+    if (growthObservedPoints.length === 0) {
       return "";
     }
 
-    const width = 320;
-    const height = 180;
-    const maxDay = Math.max(1, growthPoints[growthPoints.length - 1]?.day ?? 1);
-    const maxKg = Math.max(...growthPoints.map((point) => point.kg), 12);
-
-    return growthPoints
-      .map((point, index) => {
-        const x = (point.day / maxDay) * width;
-        const y = height - (point.kg / maxKg) * height;
-
-        return `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
-      })
+    return growthObservedPoints
+      .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
       .join(" ");
-  }, [growthPoints]);
+  }, [growthObservedPoints]);
+
+  const currentGrowthPoint =
+    growthObservedPoints[growthObservedPoints.length - 1]
+    ?? {
+      day: ageInDays,
+      kg: clampNumber(estimateGrowthBaseWeight(ageInDays), growthMinKg, growthMaxKg),
+      x: (ageInDays / growthMaxDay) * growthChartWidth,
+      y: growthChartHeight / 2,
+    };
+
+  const currentGrowthPercentile = useMemo(() => {
+    const baseline = estimateGrowthBaseWeight(currentGrowthPoint.day);
+
+    if (!baseline) {
+      return 50;
+    }
+
+    const ratio = currentGrowthPoint.kg / baseline;
+    const percentile = 25 + ((ratio - 0.9) / (1.22 - 0.9)) * (97 - 25);
+
+    return Math.round(clampNumber(percentile, 3, 99) * 10) / 10;
+  }, [currentGrowthPoint.day, currentGrowthPoint.kg]);
+
+  const growthYAxisTicks = [3, 6, 9, 12, 15, 18];
+
+  const growthXAxisTicks = useMemo(() => {
+    const step = 200;
+
+    return Array.from({ length: Math.floor(growthMaxDay / step) + 1 }, (_, index) => {
+      const day = index * step;
+      const x = (day / growthMaxDay) * growthChartWidth;
+
+      return {
+        day,
+        x,
+      };
+    });
+  }, [growthChartWidth, growthMaxDay]);
 
   const weeklyPatternMax = useMemo(() => {
     return Math.max(1, ...weeklyPatternCounts.map((item) => item.count));
@@ -2858,22 +2966,77 @@ export function PlannerClient() {
               <p className="text-xs font-medium text-slate-500">최근 한국 표준 성장곡선 톤</p>
             </div>
 
-            <svg viewBox="0 0 320 180" className="mt-3 h-52 w-full rounded-xl bg-slate-50 p-2" aria-label="성장곡선 미리보기">
-              {[0, 45, 90, 135, 180].map((y) => (
-                <line key={y} x1="0" y1={y} x2="320" y2={y} stroke="#dbe3ef" strokeDasharray="3 4" />
-              ))}
-              {[0, 80, 160, 240, 320].map((x) => (
-                <line key={x} x1={x} y1="0" x2={x} y2="180" stroke="#eef2f7" />
-              ))}
-              <path d={growthChartPath} fill="none" stroke="#ec4899" strokeWidth="2.5" strokeLinecap="round" />
-              {growthPoints.map((point) => {
-                const maxDay = Math.max(1, growthPoints[growthPoints.length - 1]?.day ?? 1);
-                const maxKg = Math.max(...growthPoints.map((item) => item.kg), 12);
-                const x = (point.day / maxDay) * 320;
-                const y = 180 - (point.kg / maxKg) * 180;
+            <svg
+              viewBox={`0 0 ${growthChartWidth} ${growthChartHeight}`}
+              className="mt-3 h-72 w-full rounded-xl bg-slate-50 p-2"
+              aria-label="성장곡선 미리보기"
+            >
+              {growthYAxisTicks.map((kg) => {
+                const y = growthChartHeight - ((kg - growthMinKg) / (growthMaxKg - growthMinKg)) * growthChartHeight;
 
-                return <circle key={`point-${point.day}`} cx={x} cy={y} r="2.8" fill="#ec4899" />;
+                return (
+                  <g key={`y-${kg}`}>
+                    <line x1="0" y1={y} x2={growthChartWidth} y2={y} stroke="#dbe3ef" strokeDasharray="3 4" />
+                    <text x="2" y={y - 2} fontSize="9" fill="#94a3b8">{kg}kg</text>
+                  </g>
+                );
               })}
+
+              {growthXAxisTicks.map((tick) => (
+                <g key={`x-${tick.day}`}>
+                  <line x1={tick.x} y1="0" x2={tick.x} y2={growthChartHeight} stroke="#eef2f7" />
+                  <text x={tick.x} y={growthChartHeight - 4} textAnchor="middle" fontSize="9" fill="#94a3b8">
+                    {tick.day}
+                  </text>
+                </g>
+              ))}
+
+              {growthReferenceCurves.map((curve) => (
+                <g key={curve.label}>
+                  <path
+                    d={curve.path}
+                    fill="none"
+                    stroke={curve.color}
+                    strokeWidth={curve.label === "50%" ? 1.8 : 1.2}
+                    strokeDasharray={curve.label === "50%" ? undefined : "3 4"}
+                  />
+                  <text
+                    x={growthChartWidth - 4}
+                    y={curve.points[curve.points.length - 1]?.y ?? 10}
+                    textAnchor="end"
+                    fontSize="9"
+                    fill={curve.color}
+                  >
+                    {curve.label}
+                  </text>
+                </g>
+              ))}
+
+              <line
+                x1={currentGrowthPoint.x}
+                y1="0"
+                x2={currentGrowthPoint.x}
+                y2={growthChartHeight}
+                stroke="#94a3b8"
+                strokeOpacity="0.55"
+              />
+
+              <path d={growthObservedPath} fill="none" stroke="#ec4899" strokeWidth="2.4" strokeLinecap="round" />
+              {growthObservedPoints.map((point) => (
+                <circle key={`point-${point.day}`} cx={point.x} cy={point.y} r="2.8" fill="#ec4899" />
+              ))}
+
+              <circle cx={currentGrowthPoint.x} cy={currentGrowthPoint.y} r="4.6" fill="#be185d" />
+
+              <g
+                transform={`translate(${Math.min(growthChartWidth - 132, currentGrowthPoint.x + 8)} ${Math.max(12, currentGrowthPoint.y - 46)})`}
+              >
+                <rect width="126" height="40" rx="8" fill="white" stroke="#cbd5e1" />
+                <text x="8" y="16" fontSize="11" fontWeight="600" fill="#1f3c88">
+                  {currentGrowthPoint.kg.toFixed(1)}kg ({currentGrowthPercentile.toFixed(1)}%)
+                </text>
+                <text x="8" y="30" fontSize="10" fill="#64748b">D+{currentGrowthPoint.day}</text>
+              </g>
             </svg>
 
             <div className="mt-4 flex justify-end">
