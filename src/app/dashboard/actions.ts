@@ -10,8 +10,10 @@ import {
   createMedicationLog,
   createMedicationSchedule,
   createRecipient,
+  createRecipientInvite,
   deleteRecipient,
   removeRecipientMember,
+  revokeRecipientInvite,
   setMedicationScheduleActive,
   type CheckinStatus,
   type MedicationLogStatus,
@@ -21,6 +23,7 @@ import { isSupabaseConfigured } from "@/lib/supabase-rest";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function asString(value: FormDataEntryValue | null): string {
   return typeof value === "string" ? value.trim() : "";
@@ -30,6 +33,16 @@ function asUUID(value: FormDataEntryValue | null): string {
   const text = asString(value);
 
   if (!UUID_REGEX.test(text)) {
+    return "";
+  }
+
+  return text;
+}
+
+function asEmail(value: FormDataEntryValue | null): string {
+  const text = asString(value).toLowerCase();
+
+  if (!EMAIL_REGEX.test(text)) {
     return "";
   }
 
@@ -142,6 +155,54 @@ export async function addRecipientMemberAction(
       canEdit,
     });
     succeed("돌봄 멤버를 추가했습니다.");
+  } catch (error) {
+    fail(getErrorMessage(error));
+  }
+}
+
+export async function createRecipientInviteAction(
+  formData: FormData,
+): Promise<void> {
+  ensureConfigured();
+
+  const session = await requireAuthSession();
+  const recipientId = asUUID(formData.get("recipientId"));
+  const invitedEmail = asEmail(formData.get("invitedEmail"));
+  const relationship = asString(formData.get("relationship"));
+  const canEdit = asBoolean(formData.get("canEdit"));
+
+  if (!recipientId || !invitedEmail) {
+    fail("초대에 필요한 recipientId/email 값을 확인해 주세요.");
+  }
+
+  try {
+    await createRecipientInvite(session, {
+      recipientId,
+      invitedEmail,
+      relationship,
+      canEdit,
+    });
+    succeed("초대 링크를 생성했습니다. 아래 초대 목록에서 링크를 공유해 주세요.");
+  } catch (error) {
+    fail(getErrorMessage(error));
+  }
+}
+
+export async function revokeRecipientInviteAction(
+  formData: FormData,
+): Promise<void> {
+  ensureConfigured();
+
+  const session = await requireAuthSession();
+  const inviteId = asUUID(formData.get("inviteId"));
+
+  if (!inviteId) {
+    fail("초대 ID 형식이 올바르지 않습니다.");
+  }
+
+  try {
+    await revokeRecipientInvite(session, inviteId);
+    succeed("초대를 취소했습니다.");
   } catch (error) {
     fail(getErrorMessage(error));
   }

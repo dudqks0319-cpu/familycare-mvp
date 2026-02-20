@@ -2,13 +2,14 @@ import Link from "next/link";
 
 import { logoutAction } from "@/app/auth/actions";
 import {
-  addRecipientMemberAction,
   createCheckinAction,
   createMedicationLogAction,
   createMedicationScheduleAction,
   createRecipientAction,
+  createRecipientInviteAction,
   deleteRecipientAction,
   removeRecipientMemberAction,
+  revokeRecipientInviteAction,
   toggleMedicationScheduleAction,
   updateRecipientMemberPermissionAction,
 } from "@/app/dashboard/actions";
@@ -88,6 +89,15 @@ function toMaskedUserId(userId: string): string {
   }
 
   return `${userId.slice(0, 6)}...${userId.slice(-4)}`;
+}
+
+function buildInviteUrl(token: string): string {
+  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(
+    /\/$/,
+    "",
+  );
+
+  return `${baseUrl}/invite?token=${token}`;
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
@@ -342,27 +352,72 @@ async function DashboardContent({ sessionUserId }: { sessionUserId: string }) {
                       )}
                     </ul>
 
-                    <form action={addRecipientMemberAction} className="mt-3 space-y-2">
+                    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold text-slate-800">초대 링크 목록</p>
+                      <ul className="mt-2 space-y-2 text-[11px] text-slate-700">
+                        {bundle.invites.length === 0 ? (
+                          <li className="text-slate-500">아직 생성된 초대 링크가 없습니다.</li>
+                        ) : (
+                          bundle.invites.slice(0, 5).map((invite) => {
+                            const inviteUrl = buildInviteUrl(invite.invite_token);
+                            const isPending = invite.status === "pending";
+
+                            return (
+                              <li
+                                key={invite.id}
+                                className="rounded border border-slate-200 bg-white p-2"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <p className="font-medium">{invite.invited_email}</p>
+                                    <p className="text-slate-500">
+                                      상태: {invite.status} · 만료: {formatDateTime(invite.expires_at)}
+                                    </p>
+                                  </div>
+                                  {isPending ? (
+                                    <form action={revokeRecipientInviteAction}>
+                                      <input type="hidden" name="inviteId" value={invite.id} />
+                                      <button
+                                        type="submit"
+                                        className="rounded border border-rose-300 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                                      >
+                                        초대 취소
+                                      </button>
+                                    </form>
+                                  ) : null}
+                                </div>
+                                <div className="mt-2 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] break-all">
+                                  {inviteUrl}
+                                </div>
+                              </li>
+                            );
+                          })
+                        )}
+                      </ul>
+                    </div>
+
+                    <form action={createRecipientInviteAction} className="mt-3 space-y-2">
                       <input type="hidden" name="recipientId" value={bundle.recipient.id} />
                       <input
-                        name="userId"
-                        placeholder="추가할 사용자 UUID"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                        type="email"
+                        name="invitedEmail"
+                        placeholder="초대할 가족 이메일"
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                         required
                       />
                       <input
                         name="relationship"
                         placeholder="관계 (예: 딸, 간병인)"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                       />
-                      <label className="flex items-center gap-2 text-xs text-slate-700">
+                      <label className="flex items-center gap-2 text-sm text-slate-700">
                         <input type="checkbox" name="canEdit" /> 편집 권한 허용
                       </label>
                       <button
                         type="submit"
-                        className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700"
+                        className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
                       >
-                        멤버 추가
+                        이메일 초대 링크 생성
                       </button>
                     </form>
                   </section>

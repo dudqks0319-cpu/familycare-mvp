@@ -20,6 +20,7 @@
 - Day9: 설정 페이지(프로필 저장)
 - Day10: 인증 기반 `/api/dashboard` JSON API
 - Day11: Supabase OAuth (Google / Kakao) 연동
+- Day12: 이메일/초대링크 기반 가족 멤버 초대/수락
 
 ## 주요 라우트
 
@@ -27,6 +28,7 @@
 - `/auth` : 이메일 로그인/회원가입 + Google/Kakao 소셜 로그인
 - `/auth/callback` : OAuth 콜백 처리 라우트
 - `/dashboard` : 돌봄 운영 대시보드
+- `/invite` : 이메일 초대 링크 수락
 - `/settings` : 계정/프로필 설정
 - `/api/dashboard` : 인증 사용자 대시보드 JSON
 
@@ -61,6 +63,7 @@ SESSION_ENCRYPTION_KEY=<32자 이상 랜덤 문자열>
    - `supabase/migrations/202602200730_init_familycare.sql`
    - `supabase/migrations/202602200910_week2_features.sql`
    - `supabase/migrations/202602200920_recipient_delete_policy.sql`
+   - `supabase/migrations/202602201045_recipient_invites.sql`
 
 ## Supabase Provider 설정 (Google / Kakao)
 

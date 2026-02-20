@@ -9,6 +9,7 @@ export function proxy(request: NextRequest) {
   const isProtectedPath =
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/settings") ||
+    pathname.startsWith("/invite") ||
     pathname.startsWith("/api/dashboard");
 
   if (!isProtectedPath) {
@@ -25,5 +26,10 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/settings/:path*", "/api/dashboard/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/settings/:path*",
+    "/invite/:path*",
+    "/api/dashboard/:path*",
+  ],
 };

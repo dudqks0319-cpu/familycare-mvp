@@ -1,5 +1,7 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import type { AuthSession } from "@/lib/auth-session";
 import { assertSupabaseConfigured } from "@/lib/supabase-rest";
 
@@ -86,9 +88,32 @@ export type Checkin = {
   created_at: string;
 };
 
+export type RecipientInviteStatus =
+  | "pending"
+  | "accepted"
+  | "revoked"
+  | "expired";
+
+export type RecipientInvite = {
+  id: string;
+  recipient_id: string;
+  invited_email: string;
+  relationship: string | null;
+  can_edit: boolean;
+  invite_token: string;
+  invited_by: string;
+  status: RecipientInviteStatus;
+  expires_at: string;
+  accepted_at: string | null;
+  accepted_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type RecipientBundle = {
   recipient: CareRecipient;
   members: RecipientMember[];
+  invites: RecipientInvite[];
   medicationSchedules: MedicationSchedule[];
   medicationLogs: MedicationLog[];
   checkins: Checkin[];
@@ -388,6 +413,102 @@ export async function removeRecipientMember(
   });
 }
 
+export async function listRecipientInvites(
+  session: AuthSession,
+  recipientIds: string[],
+): Promise<RecipientInvite[]> {
+  if (recipientIds.length === 0) {
+    return [];
+  }
+
+  return supabaseRequest<RecipientInvite[]>(session, "recipient_invites", {
+    query: {
+      select:
+        "id,recipient_id,invited_email,relationship,can_edit,invite_token,invited_by,status,expires_at,accepted_at,accepted_user_id,created_at,updated_at",
+      recipient_id: buildInFilter(recipientIds),
+      order: "created_at.desc",
+    },
+  });
+}
+
+export async function createRecipientInvite(
+  session: AuthSession,
+  input: {
+    recipientId: string;
+    invitedEmail: string;
+    relationship?: string;
+    canEdit: boolean;
+  },
+): Promise<RecipientInvite> {
+  const inviteToken = randomUUID();
+
+  const rows = await supabaseRequest<RecipientInvite[]>(session, "recipient_invites", {
+    method: "POST",
+    body: {
+      recipient_id: input.recipientId,
+      invited_email: input.invitedEmail.trim().toLowerCase(),
+      relationship: input.relationship?.trim() || null,
+      can_edit: input.canEdit,
+      invited_by: session.userId,
+      invite_token: inviteToken,
+      status: "pending",
+    },
+  });
+
+  const invite = rows[0];
+
+  if (!invite) {
+    throw new Error("초대 링크 생성에 실패했습니다.");
+  }
+
+  return invite;
+}
+
+export async function revokeRecipientInvite(
+  session: AuthSession,
+  inviteId: string,
+): Promise<void> {
+  await supabaseRequest<RecipientInvite[]>(session, "recipient_invites", {
+    method: "PATCH",
+    query: {
+      id: `eq.${inviteId}`,
+      status: "eq.pending",
+    },
+    body: {
+      status: "revoked",
+    },
+  });
+}
+
+export async function getRecipientInviteByToken(
+  session: AuthSession,
+  token: string,
+): Promise<RecipientInvite | null> {
+  const rows = await supabaseRequest<RecipientInvite[]>(session, "recipient_invites", {
+    query: {
+      select:
+        "id,recipient_id,invited_email,relationship,can_edit,invite_token,invited_by,status,expires_at,accepted_at,accepted_user_id,created_at,updated_at",
+      invite_token: `eq.${token}`,
+      limit: "1",
+    },
+  });
+
+  return rows[0] ?? null;
+}
+
+export async function acceptRecipientInvite(
+  session: AuthSession,
+  token: string,
+): Promise<void> {
+  await supabaseRequest<unknown>(session, "rpc/accept_recipient_invite", {
+    method: "POST",
+    body: {
+      invite_token: token,
+    },
+    prefer: "return=minimal",
+  });
+}
+
 export async function listMedicationSchedules(
   session: AuthSession,
   recipientIds: string[],
@@ -561,6 +682,7 @@ export async function getDashboardData(
 
   const [
     members,
+    invites,
     medicationSchedules,
     medicationLogs,
     checkins,
@@ -568,6 +690,7 @@ export async function getDashboardData(
     todayCheckins,
   ] = await Promise.all([
     listRecipientMembers(session, recipientIds),
+    listRecipientInvites(session, recipientIds),
     listMedicationSchedules(session, recipientIds),
     listMedicationLogs(session, recipientIds, { limit: 500 }),
     listCheckins(session, recipientIds, { limit: 500 }),
@@ -585,6 +708,9 @@ export async function getDashboardData(
     const memberRows = members.filter(
       (member) => member.recipient_id === recipient.id,
     );
+    const inviteRows = invites.filter(
+      (invite) => invite.recipient_id === recipient.id,
+    );
     const medicationRows = medicationSchedules.filter(
       (medication) => medication.recipient_id === recipient.id,
     );
@@ -598,6 +724,7 @@ export async function getDashboardData(
     return {
       recipient,
       members: memberRows,
+      invites: inviteRows,
       medicationSchedules: medicationRows,
       medicationLogs: medicationLogRows,
       checkins: checkinRows,
