@@ -245,15 +245,44 @@ export function loadPlannerState(): PlannerState {
   try {
     const parsed = JSON.parse(raw) as Partial<PlannerState>;
 
-    return {
+    const recipientType: RecipientType =
+      parsed.recipientType === "elder" ? "elder" : fallback.recipientType;
+
+    const activities = Array.isArray(parsed.activities)
+      ? parsed.activities.map((entry) => {
+          const category =
+            typeof entry?.category === "string"
+            && Object.prototype.hasOwnProperty.call(CATEGORY_META, entry.category)
+              ? (entry.category as ActivityCategory)
+              : "meal";
+
+          return {
+            id: typeof entry?.id === "string" ? entry.id : createId(),
+            date: typeof entry?.date === "string" ? entry.date : toDateKey(new Date()),
+            time: typeof entry?.time === "string" ? entry.time : "00:00",
+            category,
+            title:
+              typeof entry?.title === "string" && entry.title.trim()
+                ? entry.title
+                : CATEGORY_META[category].label,
+            notes: typeof entry?.notes === "string" ? entry.notes : "",
+          };
+        })
+      : fallback.activities;
+
+    const nextState: PlannerState = {
       guardianName: parsed.guardianName ?? fallback.guardianName,
       recipientName: parsed.recipientName ?? fallback.recipientName,
-      recipientType: parsed.recipientType ?? fallback.recipientType,
-      ageMonths: parsed.ageMonths ?? fallback.ageMonths,
-      elderLargeText: parsed.elderLargeText ?? fallback.elderLargeText,
-      activities: Array.isArray(parsed.activities)
-        ? parsed.activities
-        : fallback.activities,
+      recipientType,
+      ageMonths:
+        typeof parsed.ageMonths === "number" && Number.isFinite(parsed.ageMonths)
+          ? parsed.ageMonths
+          : fallback.ageMonths,
+      elderLargeText:
+        typeof parsed.elderLargeText === "boolean"
+          ? parsed.elderLargeText
+          : fallback.elderLargeText,
+      activities,
       appointments: Array.isArray(parsed.appointments)
         ? parsed.appointments
         : fallback.appointments,
@@ -263,7 +292,7 @@ export function loadPlannerState(): PlannerState {
       medicationRoutines: Array.isArray(parsed.medicationRoutines)
         ? parsed.medicationRoutines.map((routine) => ({
             ...routine,
-            takenDates: Array.isArray(routine.takenDates) ? routine.takenDates : [],
+            takenDates: Array.isArray(routine?.takenDates) ? routine.takenDates : [],
           }))
         : fallback.medicationRoutines,
       schedules: {
@@ -277,7 +306,17 @@ export function loadPlannerState(): PlannerState {
             : fallback.schedules.weekend,
       },
     };
+
+    if (!rawCurrent && rawLegacy) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      LEGACY_STORAGE_KEYS.forEach((key) => window.localStorage.removeItem(key));
+    }
+
+    return nextState;
   } catch {
+    window.localStorage.removeItem(STORAGE_KEY);
+    LEGACY_STORAGE_KEYS.forEach((key) => window.localStorage.removeItem(key));
+
     return fallback;
   }
 }
