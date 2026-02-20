@@ -9,6 +9,7 @@ type ActivityCategory =
   | "meal"
   | "snack"
   | "nap"
+  | "diaper"
   | "daycare_dropoff"
   | "daycare_pickup"
   | "medication"
@@ -89,6 +90,15 @@ type MenuItem = {
   label: string;
 };
 
+type FeedingType = "breast_left" | "breast_right" | "formula" | "baby_food";
+
+const FEEDING_TYPE_LABEL: Record<FeedingType, string> = {
+  breast_left: "모유(왼쪽)",
+  breast_right: "모유(오른쪽)",
+  formula: "분유",
+  baby_food: "이유식",
+};
+
 const STORAGE_KEY = "familycare_planner_v1";
 
 const CATEGORY_META: Record<
@@ -117,6 +127,12 @@ const CATEGORY_META: Record<
     color: "#8b5cf6",
     badgeClass: "bg-violet-100 text-violet-700",
     recipientTypes: ["child", "elder"],
+  },
+  diaper: {
+    label: "기저귀",
+    color: "#65a30d",
+    badgeClass: "bg-lime-100 text-lime-700",
+    recipientTypes: ["child"],
   },
   daycare_dropoff: {
     label: "어린이집 등원",
@@ -243,6 +259,18 @@ function getDDayLabel(targetDate: string): string {
   return `D+${Math.abs(diffDays)}`;
 }
 
+function formatDurationLabel(totalSeconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+
+  if (minutes === 0) {
+    return `${seconds}초`;
+  }
+
+  return `${minutes}분 ${String(seconds).padStart(2, "0")}초`;
+}
+
 function createInitialPlannerState(): PlannerState {
   const now = new Date();
   const tomorrow = new Date(now);
@@ -280,6 +308,14 @@ function createInitialPlannerState(): PlannerState {
         category: "snack",
         title: "바나나 간식",
         notes: "반 개 섭취",
+      },
+      {
+        id: createId(),
+        date: today,
+        time: "11:15",
+        category: "diaper",
+        title: "기저귀 교체(소변)",
+        notes: "발진 없음",
       },
       {
         id: createId(),
@@ -504,6 +540,19 @@ export function PlannerClient() {
     note: "",
   });
 
+  const [feedingDraft, setFeedingDraft] = useState({
+    type: "formula" as FeedingType,
+    amountMl: "120",
+    note: "",
+  });
+
+  const [activeTimer, setActiveTimer] = useState<{
+    mode: "feeding" | "sleep";
+    startedAt: number;
+  } | null>(null);
+
+  const [timerNow, setTimerNow] = useState<number>(() => Date.now());
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -511,6 +560,18 @@ export function PlannerClient() {
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(planner));
   }, [planner]);
+
+  useEffect(() => {
+    if (!activeTimer) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setTimerNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeTimer]);
 
   const availableCategories = useMemo(
     () => getAvailableCategories(planner.recipientType),
@@ -541,6 +602,7 @@ export function PlannerClient() {
         meal: 0,
         snack: 0,
         nap: 0,
+        diaper: 0,
         daycare_dropoff: 0,
         daycare_pickup: 0,
         medication: 0,
@@ -641,6 +703,10 @@ export function PlannerClient() {
     item.takenDates.includes(selectedDate),
   ).length;
 
+  const timerElapsedSeconds = activeTimer
+    ? Math.max(0, Math.floor((timerNow - activeTimer.startedAt) / 1000))
+    : 0;
+
   const addActivity = () => {
     const title = activityDraft.title.trim() || CATEGORY_META[selectedCategory].label;
 
@@ -698,6 +764,49 @@ export function PlannerClient() {
       title,
       notes,
     }));
+  };
+
+  const addDetailedFeeding = () => {
+    const feedLabel = FEEDING_TYPE_LABEL[feedingDraft.type];
+
+    const autoNotes: string[] = [];
+    if (feedingDraft.type === "formula" && feedingDraft.amountMl.trim()) {
+      autoNotes.push(`${feedingDraft.amountMl.trim()}ml`);
+    }
+
+    if (feedingDraft.note.trim()) {
+      autoNotes.push(feedingDraft.note.trim());
+    }
+
+    addQuickActivity("meal", `빠른기록 · ${feedLabel}`, autoNotes.join(" · "));
+    setFeedingDraft((prev) => ({ ...prev, note: "" }));
+  };
+
+  const startTimer = (mode: "feeding" | "sleep") => {
+    const now = Date.now();
+    setTimerNow(now);
+    setActiveTimer({ mode, startedAt: now });
+  };
+
+  const stopTimerAndSave = () => {
+    if (!activeTimer) {
+      return;
+    }
+
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - activeTimer.startedAt) / 1000));
+    const durationLabel = formatDurationLabel(elapsedSeconds);
+
+    if (activeTimer.mode === "feeding") {
+      addQuickActivity("meal", "타이머 기록 · 수유", `소요 ${durationLabel}`);
+    } else {
+      addQuickActivity("nap", "타이머 기록 · 수면", `소요 ${durationLabel}`);
+    }
+
+    setActiveTimer(null);
+  };
+
+  const cancelTimer = () => {
+    setActiveTimer(null);
   };
 
   const removeActivity = (id: string) => {
@@ -929,6 +1038,7 @@ export function PlannerClient() {
   const resetPlanner = () => {
     setPlanner(createInitialPlannerState());
     setSelectedDate(toDateKey(new Date()));
+    setActiveTimer(null);
   };
 
   const donutTotal = Object.values(eventCounts).reduce((sum, count) => sum + count, 0);
@@ -1253,6 +1363,27 @@ export function PlannerClient() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => addQuickActivity("diaper", "빠른기록 · 기저귀(소변)")}
+                    className="rounded-lg border border-lime-300 px-3 py-2 text-sm text-lime-700 hover:bg-lime-50"
+                  >
+                    기저귀 소변
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("diaper", "빠른기록 · 기저귀(대변)")}
+                    className="rounded-lg border border-lime-300 px-3 py-2 text-sm text-lime-700 hover:bg-lime-50"
+                  >
+                    기저귀 대변
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("diaper", "빠른기록 · 기저귀(혼합)")}
+                    className="rounded-lg border border-lime-300 px-3 py-2 text-sm text-lime-700 hover:bg-lime-50"
+                  >
+                    기저귀 혼합
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => addQuickActivity("daycare_dropoff", "빠른기록 · 어린이집 등원")}
                     className="rounded-lg border border-emerald-300 px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50"
                   >
@@ -1292,6 +1423,117 @@ export function PlannerClient() {
                 </>
               )}
             </div>
+
+            {planner.recipientType === "child" ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <p className="text-sm font-semibold text-slate-900">수유 세분화 입력 (BabyTime 스타일)</p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <label className="text-sm text-slate-700 md:col-span-2">
+                      수유 유형
+                      <select
+                        value={feedingDraft.type}
+                        onChange={(event) =>
+                          setFeedingDraft((prev) => ({
+                            ...prev,
+                            type: event.target.value as FeedingType,
+                          }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                      >
+                        {(Object.keys(FEEDING_TYPE_LABEL) as FeedingType[]).map((type) => (
+                          <option key={type} value={type}>
+                            {FEEDING_TYPE_LABEL[type]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="text-sm text-slate-700">
+                      분유량(ml)
+                      <input
+                        type="number"
+                        min={0}
+                        value={feedingDraft.amountMl}
+                        onChange={(event) =>
+                          setFeedingDraft((prev) => ({ ...prev, amountMl: event.target.value }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                      />
+                    </label>
+
+                    <label className="text-sm text-slate-700">
+                      메모
+                      <input
+                        value={feedingDraft.note}
+                        onChange={(event) =>
+                          setFeedingDraft((prev) => ({ ...prev, note: event.target.value }))
+                        }
+                        placeholder="예: 트림 잘함"
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                      />
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={addDetailedFeeding}
+                    className="mt-3 rounded-lg border border-sky-300 px-3 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-50"
+                  >
+                    수유 세분화 기록 추가
+                  </button>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <p className="text-sm font-semibold text-slate-900">수유/수면 타이머</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    시작 후 종료하면 자동으로 활동 기록에 소요 시간이 저장됩니다.
+                  </p>
+
+                  {activeTimer ? (
+                    <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                      <p className="font-semibold">
+                        {activeTimer.mode === "feeding" ? "수유 타이머" : "수면 타이머"} 진행 중
+                      </p>
+                      <p className="mt-1 text-lg font-bold">{formatDurationLabel(timerElapsedSeconds)}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={stopTimerAndSave}
+                          className="rounded bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700"
+                        >
+                          종료 후 기록 저장
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelTimer}
+                          className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100"
+                        >
+                          취소
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => startTimer("feeding")}
+                        className="rounded-lg border border-sky-300 px-3 py-2 text-sm text-sky-700 hover:bg-sky-50"
+                      >
+                        수유 타이머 시작
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => startTimer("sleep")}
+                        className="rounded-lg border border-violet-300 px-3 py-2 text-sm text-violet-700 hover:bg-violet-50"
+                      >
+                        수면 타이머 시작
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -2009,7 +2251,9 @@ export function PlannerClient() {
         <h3 className="text-base font-semibold text-slate-900">현재 사용 가능한 기능</h3>
         <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-700">
           <li>보호자/피보호자 정보 입력 + 대상 유형(영유아/어르신) 전환</li>
-          <li>원탭 빠른기록(식사/낮잠/복약/등하원/병원) + 24시간 활동 기록</li>
+          <li>원탭 빠른기록(식사/낮잠/복약/등하원/병원/기저귀) + 24시간 활동 기록</li>
+          <li>수유 세분화 입력(모유 좌/우, 분유, 이유식)</li>
+          <li>수유/수면 타이머(시작/종료 후 소요시간 자동 기록)</li>
           <li>어르신 가독성 모드(큰 글씨) 지원</li>
           <li>복약 루틴 체크리스트 + 날짜별 복용 완료 처리</li>
           <li>동그란 도넛 차트로 일일 활동 분포 시각화</li>
