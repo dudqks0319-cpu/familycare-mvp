@@ -66,6 +66,14 @@ const ELDER_STATUS_ITEMS: Array<{
   { category: "nap", label: "휴식", emoji: "🛏️", circleClass: "bg-indigo-400" },
 ];
 
+const TAB_ICONS: Record<PlannerTab, string> = {
+  today: "📝",
+  record: "📈",
+  health: "❤️",
+  schedule: "📅",
+  report: "📊",
+};
+
 function formatActivityRelative(date: string, time: string): string {
   const target = new Date(`${date}T${time}:00`);
 
@@ -178,6 +186,7 @@ export function PlannerClient() {
 
     return window.innerWidth >= 768;
   });
+  const [reportView, setReportView] = useState<"daily" | "weekly" | "interval">("daily");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeoutRef = useRef<number | null>(null);
 
@@ -520,6 +529,118 @@ export function PlannerClient() {
   }, [planner.recipientType, recentActivityByCategory]);
 
   const ageInDays = Math.max(0, Math.round(planner.ageMonths * 30.4));
+
+  const patternRingGradient = useMemo(() => {
+    const total = hourlyActivityCounts.reduce((sum, count) => sum + count, 0);
+
+    if (total <= 0) {
+      return "conic-gradient(#e2e8f0 0deg 360deg)";
+    }
+
+    let currentAngle = 0;
+    const pieces: string[] = [];
+
+    hourlyActivityCounts.forEach((count) => {
+      if (count <= 0) {
+        return;
+      }
+
+      const nextAngle = currentAngle + (count / total) * 360;
+      const lightness = Math.max(
+        45,
+        84 - Math.round((count / Math.max(1, maxHourlyActivityCount)) * 30),
+      );
+
+      pieces.push(`hsl(219 72% ${lightness}%) ${currentAngle}deg ${nextAngle}deg`);
+      currentAngle = nextAngle;
+    });
+
+    if (currentAngle < 360) {
+      pieces.push(`#e2e8f0 ${currentAngle}deg 360deg`);
+    }
+
+    return `conic-gradient(${pieces.join(",")})`;
+  }, [hourlyActivityCounts, maxHourlyActivityCount]);
+
+  const weeklyPatternCounts = useMemo(() => {
+    const weekStart = new Date(`${weekSummary.startKey}T00:00:00`);
+
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(weekStart);
+      date.setDate(weekStart.getDate() + index);
+
+      const dateKey = toDateKey(date);
+      const count = planner.activities.filter((entry) => entry.date === dateKey).length;
+      const dayLabel = new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(date);
+
+      return {
+        dateKey,
+        dayLabel,
+        count,
+      };
+    });
+  }, [planner.activities, weekSummary.startKey]);
+
+  const averageMealIntervalHours = useMemo(() => {
+    const mealEntries = dayActivities
+      .filter((entry) => entry.category === "meal")
+      .sort((a, b) => a.time.localeCompare(b.time));
+
+    if (mealEntries.length < 2) {
+      return null;
+    }
+
+    let totalMinutes = 0;
+
+    for (let index = 1; index < mealEntries.length; index += 1) {
+      const prev = mealEntries[index - 1];
+      const next = mealEntries[index];
+      const prevMinutes = Number.parseInt(prev.time.slice(0, 2), 10) * 60 + Number.parseInt(prev.time.slice(3, 5), 10);
+      const nextMinutes = Number.parseInt(next.time.slice(0, 2), 10) * 60 + Number.parseInt(next.time.slice(3, 5), 10);
+
+      totalMinutes += Math.max(0, nextMinutes - prevMinutes);
+    }
+
+    const avgMinutes = totalMinutes / (mealEntries.length - 1);
+    return Math.round((avgMinutes / 60) * 10) / 10;
+  }, [dayActivities]);
+
+  const growthPoints = useMemo(() => {
+    const maxDay = Math.max(30, ageInDays);
+    const step = Math.max(30, Math.floor(maxDay / 8));
+    const points: Array<{ day: number; kg: number }> = [];
+
+    for (let day = 0; day <= maxDay; day += step) {
+      const kg = 3.1 + 8.2 * (1 - Math.exp(-day / 220)) + day * 0.0013;
+      points.push({ day, kg: Math.round(kg * 10) / 10 });
+    }
+
+    return points;
+  }, [ageInDays]);
+
+  const growthChartPath = useMemo(() => {
+    if (growthPoints.length === 0) {
+      return "";
+    }
+
+    const width = 320;
+    const height = 180;
+    const maxDay = Math.max(1, growthPoints[growthPoints.length - 1]?.day ?? 1);
+    const maxKg = Math.max(...growthPoints.map((point) => point.kg), 12);
+
+    return growthPoints
+      .map((point, index) => {
+        const x = (point.day / maxDay) * width;
+        const y = height - (point.kg / maxKg) * height;
+
+        return `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
+      })
+      .join(" ");
+  }, [growthPoints]);
+
+  const weeklyPatternMax = useMemo(() => {
+    return Math.max(1, ...weeklyPatternCounts.map((item) => item.count));
+  }, [weeklyPatternCounts]);
 
   const addActivity = () => {
     const title = activityDraft.title.trim() || CATEGORY_META[selectedCategory].label;
@@ -1014,7 +1135,7 @@ export function PlannerClient() {
 
   return (
     <div
-      className={`space-y-6 ${
+      className={`space-y-6 pb-24 md:pb-6 ${
         planner.recipientType === "elder" && planner.elderLargeText
           ? "text-[17px] leading-7"
           : ""
@@ -2622,93 +2743,171 @@ export function PlannerClient() {
         className="space-y-4"
       >
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">리포트 요약</h3>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-semibold text-slate-900">일간 요약</p>
-              <p className="mt-2 text-sm text-slate-700">총 기록 {daySummary.total}건</p>
-              <p className="text-xs text-slate-500">
-                식사 {daySummary.byCategory.meal} · 수면 {daySummary.byCategory.nap} · 기저귀 {daySummary.byCategory.diaper} · 복약 {daySummary.byCategory.medication}
-              </p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-semibold text-slate-900">주간 복약 달성률</p>
-              <p className="mt-2 text-2xl font-bold text-slate-900">{weekSummary.medicationRate}%</p>
-              <p className="text-xs text-slate-500">
-                {weekSummary.checkedMedicationCount}/{weekSummary.medicationTargetCount}회 완료
-              </p>
-            </div>
+          <h3 className="text-lg font-semibold text-slate-900">패턴 분석</h3>
+          <div className="mt-3 grid grid-cols-3 gap-2 rounded-full border border-slate-200 bg-slate-100 p-1">
+            {([
+              { key: "daily", label: "일과표" },
+              { key: "weekly", label: "주간 패턴" },
+              { key: "interval", label: "간격 패턴" },
+            ] as const).map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setReportView(option.key)}
+                className={`rounded-full px-3 py-2 text-sm font-semibold transition ${
+                  reportView === option.key
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
+
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+            {quickStatusItems.map((item) => (
+              <div
+                key={`report-${item.category}`}
+                className="min-w-[72px] rounded-full border border-slate-200 bg-white px-3 py-2 text-center"
+              >
+                <p className="text-lg">{item.emoji}</p>
+                <p className="text-[11px] font-medium text-slate-600">{item.label}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">{quickStatusItems.length}개 지표를 기준으로 패턴을 계산합니다.</p>
+
+          {reportView === "daily" ? (
+            <div className="mt-5 flex flex-col items-center">
+              <div className="relative h-72 w-72">
+                <div className="absolute inset-0 rounded-full border border-slate-200 bg-slate-50" />
+                <div className="absolute inset-4 rounded-full" style={{ background: patternRingGradient }} />
+                <div className="absolute inset-[26%] flex flex-col items-center justify-center rounded-full border border-white bg-white/95 shadow-sm">
+                  <p className="text-sm font-semibold text-slate-500">DAY</p>
+                  <p className="text-4xl font-bold text-indigo-700">D+{ageInDays}</p>
+                </div>
+                <span className="absolute left-1/2 top-1 -translate-x-1/2 text-xs font-semibold text-slate-500">0</span>
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500">6</span>
+                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-xs font-semibold text-slate-500">12</span>
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500">18</span>
+              </div>
+              <p className="mt-3 text-xl font-semibold text-slate-700">📅 {selectedDate}</p>
+            </div>
+          ) : null}
+
+          {reportView === "weekly" ? (
+            <div className="mt-5 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              {weeklyPatternCounts.map((item) => (
+                <div key={item.dateKey} className="grid grid-cols-[48px_1fr_28px] items-center gap-2 text-sm text-slate-700">
+                  <span className="font-semibold">{item.dayLabel}</span>
+                  <div className="h-2 rounded-full bg-slate-200">
+                    <div
+                      className="h-2 rounded-full bg-indigo-500"
+                      style={{ width: `${Math.max(8, (item.count / weeklyPatternMax) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-right text-xs font-semibold">{item.count}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {reportView === "interval" ? (
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs text-slate-500">평균 수유 간격</p>
+                <p className="mt-1 text-2xl font-bold text-slate-900">
+                  {averageMealIntervalHours ? `${averageMealIntervalHours}시간` : "데이터 없음"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs text-slate-500">선택일 총 기록</p>
+                <p className="mt-1 text-2xl font-bold text-slate-900">{daySummary.total}건</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs text-slate-500">최근 수면 기록</p>
+                <p className="mt-1 text-2xl font-bold text-slate-900">{daySummary.byCategory.nap}회</p>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">활동 분포 도넛 차트</h3>
-          <div className="mt-4 grid gap-6 lg:grid-cols-[260px_1fr]">
-            <div className="flex justify-center">
-              <svg width="180" height="180" viewBox="0 0 180 180" aria-label="활동 분포">
-                <g transform="translate(90 90) rotate(-90)">
-                  <circle r="62" cx="0" cy="0" fill="none" stroke="#e2e8f0" strokeWidth="20" />
-                  {chartSlices.length > 0
-                    ? (() => {
-                        const circumference = 2 * Math.PI * 62;
-                        let offset = 0;
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-lg font-semibold text-slate-900">성장 분석 보고서</h3>
+            <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+              비교 그룹: {planner.recipientType === "child" ? "영유아" : "어르신"}
+            </span>
+          </div>
 
-                        return chartSlices.map((slice) => {
-                          const length = slice.percent * circumference;
-                          const rendered = (
-                            <circle
-                              key={slice.category}
-                              r="62"
-                              cx="0"
-                              cy="0"
-                              fill="none"
-                              stroke={CATEGORY_META[slice.category].color}
-                              strokeWidth="20"
-                              strokeDasharray={`${length} ${circumference - length}`}
-                              strokeDashoffset={-offset}
-                              strokeLinecap="butt"
-                            />
-                          );
-                          offset += length;
-                          return rendered;
-                        });
-                      })()
-                    : null}
-                </g>
-                <text x="90" y="84" textAnchor="middle" className="fill-slate-500 text-xs">
-                  총 활동
-                </text>
-                <text x="90" y="106" textAnchor="middle" className="fill-slate-900 text-lg font-semibold">
-                  {donutTotal}건
-                </text>
-              </svg>
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-900">현재 성장 데이터</p>
+            <p className="mt-1 text-sm text-slate-600">최근 기록을 기반으로 성장 추세를 계산합니다.</p>
+            <button
+              type="button"
+              className="mt-4 w-full rounded-2xl bg-indigo-700 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-800"
+            >
+              몸무게 작성하기 (새 일기)
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-900">성장곡선 미리보기</p>
+              <p className="text-xs font-medium text-slate-500">최근 한국 표준 성장곡선 톤</p>
             </div>
 
-            <div className="rounded-xl border border-slate-200 p-4">
-              <p className="text-sm font-semibold text-slate-900">24시간 패턴 차트</p>
-              <div className="mt-3 grid gap-1.5">
-                {hourlyActivityCounts.map((count, hour) => {
-                  const widthRatio = count === 0 ? 4 : Math.max(8, (count / maxHourlyActivityCount) * 100);
+            <svg viewBox="0 0 320 180" className="mt-3 h-52 w-full rounded-xl bg-slate-50 p-2" aria-label="성장곡선 미리보기">
+              {[0, 45, 90, 135, 180].map((y) => (
+                <line key={y} x1="0" y1={y} x2="320" y2={y} stroke="#dbe3ef" strokeDasharray="3 4" />
+              ))}
+              {[0, 80, 160, 240, 320].map((x) => (
+                <line key={x} x1={x} y1="0" x2={x} y2="180" stroke="#eef2f7" />
+              ))}
+              <path d={growthChartPath} fill="none" stroke="#ec4899" strokeWidth="2.5" strokeLinecap="round" />
+              {growthPoints.map((point) => {
+                const maxDay = Math.max(1, growthPoints[growthPoints.length - 1]?.day ?? 1);
+                const maxKg = Math.max(...growthPoints.map((item) => item.kg), 12);
+                const x = (point.day / maxDay) * 320;
+                const y = 180 - (point.kg / maxKg) * 180;
 
-                  return (
-                    <div key={hour} className="grid grid-cols-[42px_1fr_32px] items-center gap-2 text-xs text-slate-600">
-                      <span>{String(hour).padStart(2, "0")}시</span>
-                      <div className="h-2 rounded-full bg-slate-200">
-                        <div
-                          className="h-2 rounded-full bg-sky-500"
-                          style={{ width: `${widthRatio}%` }}
-                        />
-                      </div>
-                      <span className="text-right font-medium">{count}</span>
-                    </div>
-                  );
-                })}
-              </div>
+                return <circle key={`point-${point.day}`} cx={x} cy={y} r="2.8" fill="#ec4899" />;
+              })}
+            </svg>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                표준 성장곡선 보기
+              </button>
             </div>
           </div>
         </section>
       </section>
       ) : null}
+
+      <div className="fixed inset-x-0 bottom-3 z-30 px-4 md:hidden">
+        <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur">
+          <div className="grid grid-cols-5 gap-1">
+            {visibleTabs.map((tab) => (
+              <button
+                key={`bottom-${tab.id}`}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`rounded-xl px-2 py-1.5 text-center text-[11px] font-medium ${
+                  effectiveTab === tab.id ? "bg-sky-100 text-sky-700" : "text-slate-500"
+                }`}
+              >
+                <p className="text-base leading-4">{TAB_ICONS[tab.id]}</p>
+                <p className="mt-0.5">{tab.label}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
         <h3 className="text-base font-semibold text-slate-900">현재 사용 가능한 기능</h3>
