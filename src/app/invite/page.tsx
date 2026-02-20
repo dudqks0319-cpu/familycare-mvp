@@ -81,30 +81,25 @@ export default async function InvitePage({ searchParams }: InvitePageProps) {
   const useMockMode = publicTestMode || !configured || !session;
 
   if (!session && token && !useMockMode) {
-    const loginUrl = `/auth?mode=login&redirect=${encodeURIComponent(
-      `/invite?token=${token}`,
-    )}`;
+    const loginUrl = `/auth?mode=login&redirect=${encodeURIComponent(`/invite?token=${token}`)}`;
 
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-6 py-12">
-        <header className="space-y-2">
-          <p className="text-sm font-medium text-sky-700">FamilyCare MVP · 초대 수락</p>
-          <h1 className="text-3xl font-semibold text-slate-900">
-            가족 초대를 받으셨습니다
-          </h1>
-          <p className="text-sm text-slate-600">
-            초대를 수락하려면 먼저 로그인해 주세요. 로그인 후 이 페이지로 다시 돌아옵니다.
-          </p>
-        </header>
+      <main className="min-h-screen bg-[var(--fc-bg)] pb-20">
+        <div className="mx-auto w-full max-w-md px-4 pt-8 md:max-w-3xl md:px-6 md:pt-12">
+          <header className="space-y-1">
+            <p className="text-xs font-medium text-blue-600">FamilyCare MVP · 초대 수락</p>
+            <h1 className="text-2xl font-bold text-[var(--fc-text)]">가족 초대를 받으셨습니다</h1>
+            <p className="text-sm text-[var(--fc-text-sub)]">
+              초대를 수락하려면 먼저 로그인해 주세요. 로그인 후 이 페이지로 다시 돌아옵니다.
+            </p>
+          </header>
 
-        <section className="rounded-2xl border border-sky-200 bg-sky-50 p-6 text-center">
-          <a
-            href={loginUrl}
-            className="inline-flex rounded-lg bg-sky-600 px-6 py-3 text-base font-semibold text-white hover:bg-sky-700"
-          >
-            로그인 / 회원가입 하기
-          </a>
-        </section>
+          <section className="fc-card mt-4 p-6 text-center">
+            <a href={loginUrl} className="fc-btn fc-btn-primary w-full rounded-full px-6 text-base">
+              로그인 / 회원가입 하기
+            </a>
+          </section>
+        </div>
       </main>
     );
   }
@@ -117,8 +112,7 @@ export default async function InvitePage({ searchParams }: InvitePageProps) {
         : null;
 
   const isPending = invite?.status === "pending";
-  const isExpired =
-    invite?.expires_at ? new Date(invite.expires_at) <= new Date() : false;
+  const isExpired = invite?.expires_at ? new Date(invite.expires_at) <= new Date() : false;
   const emailMatches = useMockMode
     ? true
     : Boolean(session?.email) &&
@@ -126,107 +120,104 @@ export default async function InvitePage({ searchParams }: InvitePageProps) {
       session?.email?.toLowerCase() === invite?.invited_email.toLowerCase();
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-6 py-12">
-      <header className="space-y-2">
-        <p className="text-sm font-medium text-sky-700">FamilyCare MVP · 초대 수락</p>
-        <h1 className="text-3xl font-semibold text-slate-900">가족 초대 확인</h1>
-        <p className="text-sm text-slate-600">
-          초대 이메일과 현재 로그인 계정이 일치하면 바로 수락할 수 있습니다.
-        </p>
-      </header>
+    <main className="min-h-screen bg-[var(--fc-bg)] pb-20">
+      <div className="mx-auto w-full max-w-md px-4 pt-8 md:max-w-3xl md:px-6 md:pt-12">
+        <header className="space-y-1">
+          <p className="text-xs font-medium text-blue-600">FamilyCare MVP · 초대 수락</p>
+          <h1 className="text-2xl font-bold text-[var(--fc-text)]">가족 초대 확인</h1>
+          <p className="text-sm text-[var(--fc-text-sub)]">초대 이메일과 현재 로그인 계정이 일치하면 바로 수락할 수 있습니다.</p>
+        </header>
 
-      {useMockMode ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          공개 테스트 모드입니다. 초대 수락은 시뮬레이션으로 동작합니다.
-        </section>
-      ) : null}
-
-      {!useMockMode && !session ? (
-        <section className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
-          초대를 수락하려면 먼저 로그인해 주세요.
-        </section>
-      ) : null}
-
-      {error ? (
-        <section className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
-          {error}
-        </section>
-      ) : null}
-
-      {!token ? (
-        <section className="rounded-xl border border-slate-300 bg-slate-50 p-4 text-sm text-slate-700">
-          초대 토큰이 없습니다. 전달받은 초대 링크를 다시 확인해 주세요.
-        </section>
-      ) : null}
-
-      {token && !invite ? (
-        <section className="rounded-xl border border-slate-300 bg-slate-50 p-4 text-sm text-slate-700">
-          유효한 초대 정보를 찾을 수 없습니다.
-        </section>
-      ) : null}
-
-      {invite ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">초대 정보</h2>
-          <ul className="mt-3 space-y-2 text-sm text-slate-700">
-            <li>
-              <span className="font-medium">초대 이메일:</span> {invite.invited_email}
-            </li>
-            <li>
-              <span className="font-medium">현재 계정:</span> {session?.email || PUBLIC_TEST_EMAIL}
-            </li>
-            <li>
-              <span className="font-medium">관계:</span> {invite.relationship || "미지정"}
-            </li>
-            <li>
-              <span className="font-medium">권한:</span> {invite.can_edit ? "편집 가능" : "조회 전용"}
-            </li>
-            <li>
-              <span className="font-medium">상태:</span> {statusLabel(invite.status)}
-            </li>
-            <li>
-              <span className="font-medium">만료:</span> {formatDateTime(invite.expires_at)}
-            </li>
-          </ul>
-
-          {isPending && !isExpired ? (
-            emailMatches ? (
-              <form action={acceptRecipientInviteAction} className="mt-4">
-                <input type="hidden" name="token" value={token} />
-                <button
-                  type="submit"
-                  className="rounded-lg bg-sky-600 px-6 py-3 text-base font-semibold text-white hover:bg-sky-700"
-                >
-                  초대 수락하기
-                </button>
-              </form>
-            ) : (
-              <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-                <p className="font-semibold">이메일이 일치하지 않습니다.</p>
-                <p className="mt-1">초대받은 이메일: {invite.invited_email}</p>
-                <p>현재 계정: {session?.email || PUBLIC_TEST_EMAIL}</p>
-              </div>
-            )
+        <div className="mt-4 space-y-2.5">
+          {useMockMode ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              공개 테스트 모드입니다. 초대 수락은 시뮬레이션으로 동작합니다.
+            </section>
           ) : null}
 
-          {isPending && isExpired ? (
-            <p className="mt-4 rounded-lg border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
-              이 초대는 만료되었습니다. 초대한 분께 새 초대를 요청해 주세요.
-            </p>
+          {!useMockMode && !session ? (
+            <section className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-900">
+              초대를 수락하려면 먼저 로그인해 주세요.
+            </section>
           ) : null}
 
-          {!isPending ? (
-            <p className="mt-4 text-sm text-slate-600">
-              이 초대는 이미 처리되었습니다.
-            </p>
+          {error ? (
+            <section className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-900">
+              {error}
+            </section>
           ) : null}
-        </section>
-      ) : null}
 
-      <div>
-        <Link href="/dashboard" className="text-sm font-medium text-slate-900 underline">
-          대시보드로 이동
-        </Link>
+          {!token ? (
+            <section className="rounded-2xl border border-[var(--fc-border)] bg-white px-4 py-3 text-sm text-[var(--fc-text-sub)]">
+              초대 토큰이 없습니다. 전달받은 초대 링크를 다시 확인해 주세요.
+            </section>
+          ) : null}
+
+          {token && !invite ? (
+            <section className="rounded-2xl border border-[var(--fc-border)] bg-white px-4 py-3 text-sm text-[var(--fc-text-sub)]">
+              유효한 초대 정보를 찾을 수 없습니다.
+            </section>
+          ) : null}
+        </div>
+
+        {invite ? (
+          <section className="fc-card mt-4 p-5">
+            <h2 className="text-base font-bold text-[var(--fc-text)]">초대 정보</h2>
+            <ul className="mt-3 space-y-2 text-sm text-[var(--fc-text)]">
+              <li>
+                <span className="font-semibold">초대 이메일:</span> {invite.invited_email}
+              </li>
+              <li>
+                <span className="font-semibold">현재 계정:</span> {session?.email || PUBLIC_TEST_EMAIL}
+              </li>
+              <li>
+                <span className="font-semibold">관계:</span> {invite.relationship || "미지정"}
+              </li>
+              <li>
+                <span className="font-semibold">권한:</span> {invite.can_edit ? "편집 가능" : "조회 전용"}
+              </li>
+              <li>
+                <span className="font-semibold">상태:</span> {statusLabel(invite.status)}
+              </li>
+              <li>
+                <span className="font-semibold">만료:</span> {formatDateTime(invite.expires_at)}
+              </li>
+            </ul>
+
+            {isPending && !isExpired ? (
+              emailMatches ? (
+                <form action={acceptRecipientInviteAction} className="mt-4">
+                  <input type="hidden" name="token" value={token} />
+                  <button type="submit" className="fc-btn fc-btn-primary rounded-full px-6 text-sm">
+                    초대 수락하기
+                  </button>
+                </form>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <p className="font-semibold">이메일이 일치하지 않습니다.</p>
+                  <p className="mt-1">초대받은 이메일: {invite.invited_email}</p>
+                  <p>현재 계정: {session?.email || PUBLIC_TEST_EMAIL}</p>
+                </div>
+              )
+            ) : null}
+
+            {isPending && isExpired ? (
+              <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                이 초대는 만료되었습니다. 초대한 분께 새 초대를 요청해 주세요.
+              </p>
+            ) : null}
+
+            {!isPending ? (
+              <p className="mt-4 text-sm text-[var(--fc-text-sub)]">이 초대는 이미 처리되었습니다.</p>
+            ) : null}
+          </section>
+        ) : null}
+
+        <div className="mt-4">
+          <Link href="/dashboard" className="text-sm font-semibold text-[var(--fc-text)] underline underline-offset-2">
+            대시보드로 이동
+          </Link>
+        </div>
       </div>
     </main>
   );

@@ -29,10 +29,10 @@ export function CopyButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={onCopy}
-      className={`mt-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+      className={`mt-2 inline-flex min-h-[44px] items-center justify-center rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${
         copied
           ? "bg-emerald-600 text-white"
-          : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+          : "border border-[var(--fc-border)] bg-white text-[var(--fc-text)] hover:bg-slate-50"
       }`}
     >
       {copied ? "복사 완료" : "링크 복사"}

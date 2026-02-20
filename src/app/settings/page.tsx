@@ -63,124 +63,139 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     : "2099-01-01T00:00:00.000Z";
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-6 px-6 py-10">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-sky-700">FamilyCare MVP · Week2</p>
-          <h1 className="text-3xl font-semibold text-slate-900">설정</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            계정 프로필과 운영 정보를 관리합니다.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/dashboard"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
-          >
-            대시보드
-          </Link>
-          <Link
-            href="/"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
-          >
-            홈
-          </Link>
-          <Link
-            href="/planner"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
-          >
-            돌봄 플래너
-          </Link>
-          {session && !useMockMode ? (
-            <form action={logoutAction}>
-              <button
-                type="submit"
-                className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-              >
-                로그아웃
-              </button>
-            </form>
-          ) : (
-            <Link
-              href="/auth?mode=login&redirect=%2Fsettings"
-              className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
-            >
-              로그인 전환
-            </Link>
-          )}
-        </div>
-      </header>
-
-      {message ? (
-        <section className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
-          {message}
-        </section>
-      ) : null}
-
-      {error ? (
-        <section className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
-          {error}
-        </section>
-      ) : null}
-
-      {useMockMode ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          공개 테스트 모드입니다. 저장 버튼은 시뮬레이션으로 동작합니다.
-        </section>
-      ) : null}
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">기본 프로필</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          알림·기록 작성자 정보를 구분하기 위해 사용됩니다.
-        </p>
-
-        <form action={saveProfileAction} className="mt-4 grid gap-3 md:grid-cols-2">
-          <label className="text-sm text-slate-700">
-            이름
-            <input
-              name="fullName"
-              defaultValue={profile?.full_name ?? ""}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-              placeholder="예: 정영빈"
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            연락처
-            <input
-              name="phone"
-              defaultValue={profile?.phone ?? ""}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-              placeholder="예: 010-1234-5678"
-            />
-          </label>
-          <div className="md:col-span-2">
-            <button
-              type="submit"
-              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
-            >
-              저장
-            </button>
+    <main className="min-h-screen bg-[var(--fc-bg)] pb-32 md:pb-10">
+      <div className="mx-auto w-full max-w-md px-4 pt-6 md:max-w-5xl md:px-6 md:pt-10">
+        <header className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium text-blue-600">FamilyCare MVP</p>
+            <h1 className="mt-0.5 text-xl font-bold text-[var(--fc-text)]">설정</h1>
+            <p className="mt-0.5 text-xs text-[var(--fc-text-sub)]">계정 프로필과 운영 정보를 관리합니다.</p>
           </div>
-        </form>
-      </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-        <h2 className="text-lg font-semibold text-slate-900">계정 정보</h2>
-        <ul className="mt-3 space-y-2 text-sm text-slate-700">
-          <li>
-            <span className="font-medium">이메일:</span> {accountEmail}
-          </li>
-          <li>
-            <span className="font-medium">User ID:</span> {accountUserId}
-          </li>
-          <li>
-            <span className="font-medium">세션 만료:</span>{" "}
-            {formatDateTime(accountExpiresAtIso)}
-          </li>
-        </ul>
-      </section>
+          <div className="flex items-center gap-1.5">
+            <Link
+              href="/"
+              className="fc-btn border border-[var(--fc-border)] bg-white px-3 text-xs text-[var(--fc-text)]"
+            >
+              홈
+            </Link>
+            <Link
+              href="/dashboard"
+              className="fc-btn border border-[var(--fc-border)] bg-white px-3 text-xs text-[var(--fc-text)]"
+            >
+              대시보드
+            </Link>
+            <Link
+              href="/planner"
+              className="fc-btn border border-[var(--fc-border)] bg-white px-3 text-xs text-[var(--fc-text)]"
+            >
+              플래너
+            </Link>
+            {session && !useMockMode ? (
+              <form action={logoutAction}>
+                <button type="submit" className="fc-btn bg-slate-900 px-3 text-xs text-white">
+                  로그아웃
+                </button>
+              </form>
+            ) : (
+              <Link
+                href="/auth?mode=login&redirect=%2Fsettings"
+                className="fc-btn fc-btn-primary px-3 text-xs"
+              >
+                로그인
+              </Link>
+            )}
+          </div>
+        </header>
+
+        <div className="mt-4 space-y-2.5">
+          {message ? (
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
+              {message}
+            </section>
+          ) : null}
+
+          {error ? (
+            <section className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-900">
+              {error}
+            </section>
+          ) : null}
+
+          {useMockMode ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              공개 테스트 모드입니다. 저장 버튼은 시뮬레이션으로 동작합니다.
+            </section>
+          ) : null}
+        </div>
+
+        <section className="fc-card mt-4 p-5">
+          <h2 className="text-base font-bold text-[var(--fc-text)]">기본 프로필</h2>
+          <p className="mt-1 text-xs text-[var(--fc-text-sub)]">알림·기록 작성자 정보를 구분하기 위해 사용됩니다.</p>
+
+          <form action={saveProfileAction} className="mt-4 grid gap-3 md:grid-cols-2">
+            <label className="text-xs font-medium text-[var(--fc-text-sub)]">
+              이름
+              <input
+                name="fullName"
+                defaultValue={profile?.full_name ?? ""}
+                className="mt-1 w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm text-[var(--fc-text)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                placeholder="예: 정영빈"
+              />
+            </label>
+            <label className="text-xs font-medium text-[var(--fc-text-sub)]">
+              연락처
+              <input
+                name="phone"
+                defaultValue={profile?.phone ?? ""}
+                className="mt-1 w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm text-[var(--fc-text)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                placeholder="예: 010-1234-5678"
+              />
+            </label>
+            <div className="md:col-span-2">
+              <button type="submit" className="fc-btn fc-btn-primary px-4 text-sm">
+                저장
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section className="fc-card mt-4 p-5">
+          <h2 className="text-base font-bold text-[var(--fc-text)]">계정 정보</h2>
+          <ul className="mt-3 space-y-2 text-sm text-[var(--fc-text)]">
+            <li>
+              <span className="font-semibold">이메일:</span> {accountEmail}
+            </li>
+            <li>
+              <span className="font-semibold">User ID:</span> {accountUserId}
+            </li>
+            <li>
+              <span className="font-semibold">세션 만료:</span> {formatDateTime(accountExpiresAtIso)}
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <nav className="fc-bottom-nav md:hidden">
+        <div className="mx-auto grid w-full max-w-sm grid-cols-4 px-2 py-1.5">
+          {[
+            { href: "/", label: "홈", icon: "🏠" },
+            { href: "/dashboard", label: "대시보드", icon: "📊" },
+            { href: "/planner", label: "기록", icon: "📝" },
+            { href: "/settings", label: "설정", icon: "⚙️" },
+          ].map((tab) => (
+            <Link
+              key={tab.label}
+              href={tab.href}
+              className={`flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-semibold ${
+                tab.href === "/settings" ? "text-blue-600" : "text-[var(--fc-text-sub)]"
+              }`}
+            >
+              <span className="text-lg">{tab.icon}</span>
+              {tab.label}
+            </Link>
+          ))}
+        </div>
+      </nav>
     </main>
   );
 }

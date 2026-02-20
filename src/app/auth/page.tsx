@@ -32,149 +32,144 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
   const configured = isSupabaseConfigured();
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-6 py-12">
-      <header className="space-y-3">
-        <p className="text-sm font-medium text-sky-700">FamilyCare MVP · 인증</p>
-        <h1 className="text-3xl font-semibold text-slate-900">
-          이메일 + 소셜 로그인
-        </h1>
-        <p className="text-sm text-slate-600">
-          MVP 검증을 위해 이메일 로그인과 Google/카카오 소셜 로그인을 함께 제공합니다.
-        </p>
-      </header>
-
-      {!configured ? (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-semibold">환경변수 설정 필요</p>
-          <p>
-            <code>NEXT_PUBLIC_SUPABASE_URL</code>,{" "}
-            <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> 값을 .env.local에 추가해 주세요.
+    <main className="min-h-screen bg-[var(--fc-bg)] pb-20">
+      <div className="mx-auto w-full max-w-md px-4 pt-8 md:max-w-5xl md:px-6 md:pt-12">
+        <header className="space-y-1">
+          <p className="text-xs font-medium text-blue-600">FamilyCare MVP · 인증</p>
+          <h1 className="text-2xl font-bold text-[var(--fc-text)]">이메일 + 소셜 로그인</h1>
+          <p className="text-sm text-[var(--fc-text-sub)]">
+            이메일 로그인과 Google/카카오 소셜 로그인을 함께 제공합니다.
           </p>
+        </header>
+
+        <div className="mt-4 space-y-2.5">
+          {!configured ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              <p className="font-semibold">환경변수 설정 필요</p>
+              <p>
+                <code>NEXT_PUBLIC_SUPABASE_URL</code>, <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> 값을
+                .env.local에 추가해 주세요.
+              </p>
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-900">
+              {error}
+            </div>
+          ) : null}
+
+          {message ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
+              {message}
+            </div>
+          ) : null}
         </div>
-      ) : null}
 
-      {error ? (
-        <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
-          {error}
-        </div>
-      ) : null}
-
-      {message ? (
-        <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
-          {message}
-        </div>
-      ) : null}
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <section
-          className={`rounded-2xl border p-6 shadow-sm ${
-            mode === "login" ? "border-sky-300 bg-sky-50/60" : "border-slate-200"
-          }`}
-        >
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">로그인</h2>
-          <form action={loginAction} className="space-y-4">
-            {redirectTo ? <input type="hidden" name="redirect" value={redirectTo} /> : null}
-            <label className="block text-sm text-slate-700">
-              이메일
-              <input
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-                type="email"
-                name="email"
-                placeholder="guardian@example.com"
-                required
-              />
-            </label>
-            <label className="block text-sm text-slate-700">
-              비밀번호
-              <input
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-                type="password"
-                name="password"
-                required
-              />
-            </label>
-            <button
-              type="submit"
-              className="w-full rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
-            >
-              이메일 로그인
-            </button>
-          </form>
-
-          <div className="my-4 h-px bg-slate-200" />
-
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-slate-500">소셜 로그인 (Supabase OAuth)</p>
-            <form action={startOAuthAction}>
-              <input type="hidden" name="provider" value="google" />
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <section
+            className={`fc-card p-5 ${mode === "login" ? "ring-2 ring-blue-100" : ""}`}
+            aria-current={mode === "login" ? "true" : undefined}
+          >
+            <h2 className="mb-4 text-base font-bold text-[var(--fc-text)]">로그인</h2>
+            <form action={loginAction} className="space-y-3">
               {redirectTo ? <input type="hidden" name="redirect" value={redirectTo} /> : null}
-              <button
-                type="submit"
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-              >
-                Google로 로그인
+              <label className="block text-xs font-medium text-[var(--fc-text-sub)]">
+                이메일
+                <input
+                  className="mt-1 w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm text-[var(--fc-text)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  type="email"
+                  name="email"
+                  placeholder="guardian@example.com"
+                  required
+                />
+              </label>
+              <label className="block text-xs font-medium text-[var(--fc-text-sub)]">
+                비밀번호
+                <input
+                  className="mt-1 w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm text-[var(--fc-text)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  type="password"
+                  name="password"
+                  required
+                />
+              </label>
+              <button type="submit" className="fc-btn fc-btn-primary w-full rounded-xl text-sm">
+                이메일 로그인
               </button>
             </form>
-            <form action={startOAuthAction}>
-              <input type="hidden" name="provider" value="kakao" />
+
+            <div className="my-4 h-px bg-[var(--fc-border)]" />
+
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-[var(--fc-text-sub)]">소셜 로그인 (Supabase OAuth)</p>
+              <form action={startOAuthAction}>
+                <input type="hidden" name="provider" value="google" />
+                {redirectTo ? <input type="hidden" name="redirect" value={redirectTo} /> : null}
+                <button
+                  type="submit"
+                  className="fc-btn w-full rounded-xl border border-[var(--fc-border)] bg-white px-4 text-sm text-[var(--fc-text)] hover:bg-slate-50"
+                >
+                  Google로 로그인
+                </button>
+              </form>
+              <form action={startOAuthAction}>
+                <input type="hidden" name="provider" value="kakao" />
+                {redirectTo ? <input type="hidden" name="redirect" value={redirectTo} /> : null}
+                <button
+                  type="submit"
+                  className="fc-btn w-full rounded-xl border border-yellow-200 bg-yellow-50 px-4 text-sm text-yellow-900 hover:bg-yellow-100"
+                >
+                  카카오로 로그인
+                </button>
+              </form>
+              <p className="text-[11px] text-[var(--fc-text-sub)]">
+                네이버 로그인은 2단계(NextAuth 연동 브릿지)로 추가 예정입니다.
+              </p>
+            </div>
+          </section>
+
+          <section
+            className={`fc-card p-5 ${mode === "signup" ? "ring-2 ring-indigo-100" : ""}`}
+            aria-current={mode === "signup" ? "true" : undefined}
+          >
+            <h2 className="mb-4 text-base font-bold text-[var(--fc-text)]">회원가입</h2>
+            <form action={signupAction} className="space-y-3">
               {redirectTo ? <input type="hidden" name="redirect" value={redirectTo} /> : null}
+              <label className="block text-xs font-medium text-[var(--fc-text-sub)]">
+                이메일
+                <input
+                  className="mt-1 w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm text-[var(--fc-text)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  type="email"
+                  name="email"
+                  placeholder="family@example.com"
+                  required
+                />
+              </label>
+              <label className="block text-xs font-medium text-[var(--fc-text-sub)]">
+                비밀번호 (8자 이상)
+                <input
+                  className="mt-1 w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm text-[var(--fc-text)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  type="password"
+                  name="password"
+                  minLength={8}
+                  required
+                />
+              </label>
               <button
                 type="submit"
-                className="w-full rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm font-semibold text-yellow-900 hover:bg-yellow-100"
+                className="fc-btn w-full rounded-xl bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700"
               >
-                카카오로 로그인
+                회원가입
               </button>
             </form>
-            <p className="text-[11px] text-slate-500">
-              네이버 로그인은 2단계(NextAuth 연동 브릿지)로 추가 예정입니다.
-            </p>
-          </div>
-        </section>
+          </section>
+        </div>
 
-        <section
-          className={`rounded-2xl border p-6 shadow-sm ${
-            mode === "signup"
-              ? "border-indigo-300 bg-indigo-50/60"
-              : "border-slate-200"
-          }`}
-        >
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">회원가입</h2>
-          <form action={signupAction} className="space-y-4">
-            {redirectTo ? <input type="hidden" name="redirect" value={redirectTo} /> : null}
-            <label className="block text-sm text-slate-700">
-              이메일
-              <input
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-                type="email"
-                name="email"
-                placeholder="family@example.com"
-                required
-              />
-            </label>
-            <label className="block text-sm text-slate-700">
-              비밀번호 (8자 이상)
-              <input
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-                type="password"
-                name="password"
-                minLength={8}
-                required
-              />
-            </label>
-            <button
-              type="submit"
-              className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-            >
-              회원가입
-            </button>
-          </form>
-        </section>
-      </div>
-
-      <div className="text-sm text-slate-600">
-        <Link className="font-medium text-slate-900 underline" href="/">
-          홈으로 돌아가기
-        </Link>
+        <div className="mt-4 text-sm text-[var(--fc-text-sub)]">
+          <Link className="font-semibold text-[var(--fc-text)] underline underline-offset-2" href="/">
+            홈으로 돌아가기
+          </Link>
+        </div>
       </div>
     </main>
   );

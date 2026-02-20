@@ -1,26 +1,118 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --fc-bg: #f4f5f7;
+  --fc-card: #ffffff;
+  --fc-primary: #3b82f6;
+  --fc-primary-dark: #2563eb;
+  --fc-text: #1e293b;
+  --fc-text-sub: #64748b;
+  --fc-border: #e2e8f0;
+  --fc-radius-card: 20px;
+  --fc-radius-btn: 14px;
+  --fc-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --fc-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --fc-nav-height: 56px;
+  --fc-safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--fc-bg);
+  --color-foreground: var(--fc-text);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--fc-bg);
+  color: var(--fc-text);
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 공통 카드 */
+.fc-card {
+  background: var(--fc-card);
+  border-radius: var(--fc-radius-card);
+  box-shadow: var(--fc-shadow-card);
+  border: 1px solid var(--fc-border);
+}
+
+/* 공통 버튼 */
+.fc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: var(--fc-radius-btn);
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: all 0.15s ease;
+}
+
+.fc-btn:active {
+  transform: scale(0.97);
+}
+
+.fc-btn-primary {
+  background: var(--fc-primary);
+  color: #fff;
+}
+
+.fc-btn-primary:hover {
+  background: var(--fc-primary-dark);
+}
+
+/* 하단 네비게이션 */
+.fc-bottom-nav {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--fc-border);
+  padding-bottom: var(--fc-safe-bottom);
+}
+
+/* 플로팅 CTA */
+.fc-float-cta {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--fc-nav-height) + var(--fc-safe-bottom) + 12px);
+  box-shadow: var(--fc-shadow-float);
+}
+
+/* 스크롤바 숨기기 (탭 바 등) */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 토스트 진입 애니메이션 */
+@keyframes fc-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.fc-toast-enter {
+  animation: fc-toast-in 0.2s ease-out;
 }

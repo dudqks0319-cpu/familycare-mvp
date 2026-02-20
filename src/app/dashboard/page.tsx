@@ -139,88 +139,99 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     : await getDashboardData(session);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-6 py-10">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-sky-700">FamilyCare MVP · Week1-2</p>
-          <h1 className="text-3xl font-semibold text-slate-900">
-            돌봄 운영 대시보드
-          </h1>
-          <p className="text-sm text-slate-600">
-            피보호자 관리, 복약 일정/기록, 체크인 알림을 한 화면에서 운영합니다.
-          </p>
-          <p className="text-xs text-slate-500">
-            {useMockMode
-              ? `공개 테스트 모드 계정: ${effectiveEmail}`
-              : `로그인 계정: ${effectiveEmail}`}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
-          >
-            홈
-          </Link>
-          <Link
-            href="/settings"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
-          >
-            설정
-          </Link>
-          <Link
-            href="/planner"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
-          >
-            돌봄 플래너
-          </Link>
-          {session && !useMockMode ? (
-            <form action={logoutAction}>
-              <button
-                type="submit"
-                className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-              >
-                로그아웃
-              </button>
-            </form>
-          ) : (
+    <main className="min-h-screen bg-[var(--fc-bg)] pb-32 md:pb-10">
+      <div className="mx-auto w-full max-w-md px-4 pt-6 md:max-w-5xl md:px-6 md:pt-10">
+        {/* ── 헤더 ── */}
+        <header className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-blue-600">FamilyCare MVP</p>
+            <h1 className="mt-0.5 text-xl font-bold text-[var(--fc-text)]">돌봄 대시보드</h1>
+            <p className="mt-0.5 text-xs text-[var(--fc-text-sub)]">
+              {useMockMode ? `테스트 모드 · ${effectiveEmail}` : `${effectiveEmail}`}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
             <Link
-              href="/auth?mode=login&redirect=%2Fdashboard"
-              className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+              href="/"
+              className="fc-btn border border-[var(--fc-border)] bg-white px-3 text-xs text-[var(--fc-text)]"
             >
-              로그인 전환
+              홈
             </Link>
-          )}
+            <Link
+              href="/planner"
+              className="fc-btn border border-[var(--fc-border)] bg-white px-3 text-xs text-[var(--fc-text)]"
+            >
+              플래너
+            </Link>
+            {session && !useMockMode ? (
+              <form action={logoutAction}>
+                <button type="submit" className="fc-btn bg-slate-900 px-3 text-xs text-white">
+                  로그아웃
+                </button>
+              </form>
+            ) : (
+              <Link
+                href="/auth?mode=login&redirect=%2Fdashboard"
+                className="fc-btn fc-btn-primary px-3 text-xs"
+              >
+                로그인
+              </Link>
+            )}
+          </div>
+        </header>
+
+        {/* ── 배너 영역 ── */}
+        <div className="mt-4 space-y-2.5">
+          {useMockMode ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              <p className="font-semibold">임시 공개 테스트 모드</p>
+              <p className="mt-0.5 opacity-80">로그인 없이 전체 기능 테스트 가능 · 액션은 시뮬레이션 처리</p>
+            </section>
+          ) : null}
+          {message ? (
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
+              {message}
+            </section>
+          ) : null}
+          {error ? (
+            <section className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-900">
+              {error}
+            </section>
+          ) : null}
         </div>
-      </header>
 
-      {useMockMode ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-semibold">임시 공개 테스트 모드가 켜져 있습니다.</p>
-          <p>
-            로그인 없이 모든 화면/버튼을 테스트할 수 있으며, 액션은 시뮬레이션으로 처리됩니다.
-          </p>
-        </section>
-      ) : null}
+        {/* ── 대시보드 콘텐츠 ── */}
+        <div className="mt-5">
+          <DashboardContent
+            sessionUserId={effectiveUserId}
+            dashboardData={dashboardData}
+            isMockMode={useMockMode}
+          />
+        </div>
+      </div>
 
-      {message ? (
-        <section className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
-          {message}
-        </section>
-      ) : null}
-
-      {error ? (
-        <section className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
-          {error}
-        </section>
-      ) : null}
-
-      <DashboardContent
-        sessionUserId={effectiveUserId}
-        dashboardData={dashboardData}
-        isMockMode={useMockMode}
-      />
+      {/* ── 하단 탭바 (모바일) ── */}
+      <nav className="fc-bottom-nav md:hidden">
+        <div className="mx-auto grid w-full max-w-sm grid-cols-4 px-2 py-1.5">
+          {[
+            { href: "/", label: "홈", icon: "🏠" },
+            { href: "/dashboard", label: "대시보드", icon: "📊" },
+            { href: "/planner", label: "기록", icon: "📝" },
+            { href: "/settings", label: "설정", icon: "⚙️" },
+          ].map((tab) => (
+            <Link
+              key={tab.label}
+              href={tab.href}
+              className={`flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-semibold ${
+                tab.href === "/dashboard" ? "text-blue-600" : "text-[var(--fc-text-sub)]"
+              }`}
+            >
+              <span className="text-lg">{tab.icon}</span>
+              {tab.label}
+            </Link>
+          ))}
+        </div>
+      </nav>
     </main>
   );
 }
@@ -236,21 +247,21 @@ function DashboardContent({
 }) {
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
+      {/* 테스트 모드 안내 */}
       {isMockMode ? (
-        <section className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
-          버튼/폼은 모두 동작하도록 열어두었고, 임시 테스트 환경에서는 실제 저장 대신 시뮬레이션 메시지를 반환합니다.
+        <section className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
+          버튼/폼은 모두 동작하며, 임시 환경에서는 실제 저장 대신 시뮬레이션 메시지를 반환합니다.
         </section>
       ) : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {/* ── 통계 카드 ── */}
+      <section className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
         <StatCard label="피보호자" value={`${dashboardData.stats.recipientCount}명`} />
         <StatCard
-          label="활성 복약 일정"
+          label="활성 복약"
           value={`${dashboardData.stats.activeMedicationCount}개`}
-          variant={
-            dashboardData.stats.activeMedicationCount > 0 ? "default" : "warning"
-          }
+          variant={dashboardData.stats.activeMedicationCount > 0 ? "default" : "warning"}
         />
         <StatCard
           label="오늘 체크인"
@@ -258,7 +269,7 @@ function DashboardContent({
           variant={dashboardData.stats.todayCheckinCount > 0 ? "success" : "warning"}
         />
         <StatCard
-          label="오늘 복약 완료율"
+          label="복약 완료율"
           value={
             dashboardData.stats.todayMedicationTakenRate === null
               ? "기록 없음"
@@ -276,43 +287,41 @@ function DashboardContent({
         />
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">피보호자 등록</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Day2 기능: 새 피보호자를 등록하면 자동으로 본인이 owner 권한 멤버로 연결됩니다.
+      {/* ── 피보호자 등록 ── */}
+      <section className="fc-card p-5">
+        <h2 className="text-base font-bold text-[var(--fc-text)]">피보호자 등록</h2>
+        <p className="mt-1 text-xs text-[var(--fc-text-sub)]">
+          새 피보호자를 등록하면 자동으로 본인이 owner 권한 멤버로 연결됩니다.
         </p>
 
         <form action={createRecipientAction} className="mt-4 grid gap-3 md:grid-cols-4">
-          <label className="text-sm text-slate-700 md:col-span-1">
+          <label className="text-xs font-medium text-[var(--fc-text-sub)] md:col-span-1">
             이름
             <input
               name="name"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm text-[var(--fc-text)] placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
               placeholder="예: 김영순"
               required
             />
           </label>
-          <label className="text-sm text-slate-700 md:col-span-1">
+          <label className="text-xs font-medium text-[var(--fc-text-sub)] md:col-span-1">
             생년월일
             <input
               type="date"
               name="birthDate"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm text-[var(--fc-text)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
             />
           </label>
-          <label className="text-sm text-slate-700 md:col-span-2">
+          <label className="text-xs font-medium text-[var(--fc-text-sub)] md:col-span-2">
             메모
             <input
               name="notes"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm text-[var(--fc-text)] placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
               placeholder="질환, 주의사항 등"
             />
           </label>
           <div className="md:col-span-4">
-            <button
-              type="submit"
-              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
-            >
+            <button type="submit" className="fc-btn fc-btn-primary px-5 text-sm">
               피보호자 등록
             </button>
           </div>
@@ -335,7 +344,7 @@ function DashboardContent({
             dashboardData.bundles.map((bundle) => (
               <article
                 key={bundle.recipient.id}
-                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                className="fc-card p-5"
               >
                 <header className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -366,7 +375,7 @@ function DashboardContent({
                 </header>
 
                 <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                  <section className="rounded-xl border border-slate-200 p-4">
+                  <section className="rounded-2xl border border-[var(--fc-border)] bg-[var(--fc-bg)] p-4">
                     <h4 className="text-sm font-semibold text-slate-900">돌봄 멤버</h4>
                     <ul className="mt-3 space-y-2 text-xs text-slate-700">
                       {bundle.members.length === 0 ? (
@@ -479,27 +488,27 @@ function DashboardContent({
                         type="email"
                         name="invitedEmail"
                         placeholder="초대할 가족 이메일"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        className="w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 text-sm"
                         required
                       />
                       <input
                         name="relationship"
                         placeholder="관계 (예: 딸, 간병인)"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        className="w-full rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 text-sm"
                       />
                       <label className="flex items-center gap-2 text-sm text-slate-700">
                         <input type="checkbox" name="canEdit" /> 편집 권한 허용
                       </label>
                       <button
                         type="submit"
-                        className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                        className="fc-btn bg-slate-900 px-3 text-sm text-white hover:bg-slate-700"
                       >
                         이메일 초대 링크 생성
                       </button>
                     </form>
                   </section>
 
-                  <section className="rounded-xl border border-slate-200 p-4">
+                  <section className="rounded-2xl border border-[var(--fc-border)] bg-[var(--fc-bg)] p-4">
                     <h4 className="text-sm font-semibold text-slate-900">복약 일정</h4>
                     <ul className="mt-3 space-y-2 text-xs text-slate-700">
                       {bundle.medicationSchedules.length === 0 ? (
@@ -590,14 +599,14 @@ function DashboardContent({
                       <input
                         name="medicationName"
                         placeholder="약 이름"
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                        className="rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 text-xs"
                         required
                       />
                       <div className="grid grid-cols-2 gap-2">
                         <input
                           name="dosage"
                           placeholder="용량 (예: 1정)"
-                          className="rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                          className="rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 text-xs"
                           required
                         />
                         <input
@@ -605,18 +614,18 @@ function DashboardContent({
                           min={1}
                           name="timesPerDay"
                           defaultValue={1}
-                          className="rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                          className="rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 text-xs"
                           required
                         />
                       </div>
                       <input
                         name="instructions"
                         placeholder="복약 지시사항"
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                        className="rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 text-xs"
                       />
                       <button
                         type="submit"
-                        className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                        className="fc-btn bg-indigo-600 px-3 text-xs text-white hover:bg-indigo-700"
                       >
                         복약 일정 추가
                       </button>
@@ -625,13 +634,13 @@ function DashboardContent({
                 </div>
 
                 <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                  <section className="rounded-xl border border-slate-200 p-4">
+                  <section className="rounded-2xl border border-[var(--fc-border)] bg-[var(--fc-bg)] p-4">
                     <h4 className="text-sm font-semibold text-slate-900">체크인</h4>
                     <form action={createCheckinAction} className="mt-3 grid gap-2">
                       <input type="hidden" name="recipientId" value={bundle.recipient.id} />
                       <select
                         name="status"
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                        className="rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 text-xs"
                         defaultValue="ok"
                       >
                         <option value="ok">정상</option>
@@ -641,11 +650,11 @@ function DashboardContent({
                       <input
                         name="memo"
                         placeholder="체크인 메모"
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                        className="rounded-xl border border-[var(--fc-border)] bg-[var(--fc-bg)] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 text-xs"
                       />
                       <button
                         type="submit"
-                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+                        className="fc-btn bg-emerald-600 px-3 text-xs text-white hover:bg-emerald-700"
                       >
                         체크인 등록
                       </button>
@@ -680,7 +689,7 @@ function DashboardContent({
                     </ul>
                   </section>
 
-                  <section className="rounded-xl border border-slate-200 p-4">
+                  <section className="rounded-2xl border border-[var(--fc-border)] bg-[var(--fc-bg)] p-4">
                     <h4 className="text-sm font-semibold text-slate-900">최근 복약 기록</h4>
                     <ul className="mt-3 space-y-2 text-xs text-slate-700">
                       {bundle.medicationLogs.length === 0 ? (
@@ -717,7 +726,7 @@ function DashboardContent({
         </div>
 
         <aside className="space-y-4">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section className="fc-card p-5">
             <h3 className="text-base font-semibold text-slate-900">알림 보드</h3>
             <p className="mt-1 text-xs text-slate-600">
               Week2 기능: 위험/주의 체크인만 모아 빠르게 확인합니다.
@@ -757,7 +766,7 @@ function DashboardContent({
             </ul>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section className="fc-card p-5">
             <h3 className="text-base font-semibold text-slate-900">API</h3>
             <p className="mt-1 text-xs text-slate-600">
               인증 후 <code>/api/dashboard</code>로 대시보드 요약 JSON을 받을 수 있습니다.
@@ -778,17 +787,17 @@ function StatCard({
   value: string;
   variant?: "default" | "success" | "warning" | "danger";
 }) {
-  const variantClassMap = {
-    default: "border-slate-200 bg-white text-slate-900",
-    success: "border-emerald-200 bg-emerald-50 text-emerald-800",
-    warning: "border-amber-200 bg-amber-50 text-amber-800",
-    danger: "border-rose-200 bg-rose-50 text-rose-800",
+  const tone = {
+    default: "bg-white border-[var(--fc-border)] text-[var(--fc-text)]",
+    success: "bg-emerald-50 border-emerald-200 text-emerald-800",
+    warning: "bg-amber-50 border-amber-200 text-amber-800",
+    danger: "bg-rose-50 border-rose-200 text-rose-800",
   } as const;
 
   return (
-    <article className={`rounded-xl border p-4 shadow-sm ${variantClassMap[variant]}`}>
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+    <article className={`rounded-2xl border p-4 shadow-sm ${tone[variant]}`}>
+      <p className="text-[11px] font-medium text-[var(--fc-text-sub)]">{label}</p>
+      <p className="mt-1.5 text-2xl font-bold">{value}</p>
     </article>
   );
 }
