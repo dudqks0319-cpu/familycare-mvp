@@ -7,7 +7,6 @@ export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   const isProtectedPath =
-    pathname.startsWith("/dashboard") ||
     pathname.startsWith("/settings") ||
     pathname.startsWith("/invite") ||
     pathname.startsWith("/api/dashboard");
@@ -19,7 +18,11 @@ export function proxy(request: NextRequest) {
   const authCookie = request.cookies.get(AUTH_COOKIE_NAME);
 
   if (!authCookie) {
-    return NextResponse.redirect(new URL("/auth?mode=login", request.url));
+    const redirectTarget = `${pathname}${request.nextUrl.search}`;
+    const loginUrl = new URL("/auth?mode=login", request.url);
+    loginUrl.searchParams.set("redirect", redirectTarget);
+
+    return NextResponse.redirect(loginUrl);
   }
 
   return NextResponse.next();
@@ -27,7 +30,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/dashboard/:path*",
     "/settings/:path*",
     "/invite/:path*",
     "/api/dashboard/:path*",

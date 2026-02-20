@@ -14,7 +14,7 @@ import {
   updateRecipientMemberPermissionAction,
 } from "@/app/dashboard/actions";
 import { CopyButton } from "@/app/dashboard/components/copy-button";
-import { requireAuthSession } from "@/lib/auth-session";
+import { getAuthSessionFromCookie, requireAuthSession } from "@/lib/auth-session";
 import { getDashboardData } from "@/lib/familycare-db";
 import { isSupabaseConfigured } from "@/lib/supabase-rest";
 
@@ -117,12 +117,13 @@ function buildInviteUrl(token: string): string {
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
-  const session = await requireAuthSession();
+  const session = await getAuthSessionFromCookie();
   const params = await searchParams;
   const error = readParam(params, "error");
   const message = readParam(params, "message");
 
   const configured = isSupabaseConfigured();
+  const isGuest = !session;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-6 py-10">
@@ -135,7 +136,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <p className="text-sm text-slate-600">
             피보호자 관리, 복약 일정/기록, 체크인 알림을 한 화면에서 운영합니다.
           </p>
-          <p className="text-xs text-slate-500">로그인 계정: {session.email || session.userId}</p>
+          <p className="text-xs text-slate-500">
+            {session
+              ? `로그인 계정: ${session.email || session.userId}`
+              : "비회원 미리보기 모드입니다. 실제 데이터 확인/수정은 로그인 후 가능합니다."}
+          </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -145,24 +150,36 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           >
             홈
           </Link>
-          <Link
-            href="/settings"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
-          >
-            설정
-          </Link>
-          <form action={logoutAction}>
-            <button
-              type="submit"
-              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+
+          {session ? (
+            <>
+              <Link
+                href="/settings"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
+              >
+                설정
+              </Link>
+              <form action={logoutAction}>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                >
+                  로그아웃
+                </button>
+              </form>
+            </>
+          ) : (
+            <Link
+              href="/auth?mode=login&redirect=%2Fdashboard"
+              className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
             >
-              로그아웃
-            </button>
-          </form>
+              로그인/회원가입
+            </Link>
+          )}
         </div>
       </header>
 
-      {!configured ? (
+      {session && !configured ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           <p className="font-semibold">Supabase 환경변수를 먼저 설정해 주세요.</p>
           <p>
@@ -185,8 +202,56 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </section>
       ) : null}
 
-      {configured ? <DashboardContent sessionUserId={session.userId} /> : null}
+      {isGuest ? <GuestDashboardPreview /> : null}
+      {session && configured ? <DashboardContent sessionUserId={session.userId} /> : null}
     </main>
+  );
+}
+
+function GuestDashboardPreview() {
+  return (
+    <section className="space-y-6">
+      <section className="rounded-2xl border border-sky-200 bg-sky-50 p-6">
+        <h2 className="text-lg font-semibold text-sky-900">비회원 체험 모드</h2>
+        <p className="mt-2 text-sm text-sky-800">
+          로그인 없이도 화면 구성을 확인하실 수 있도록 샘플 데이터를 보여드립니다.
+          실제 가족 데이터는 안전하게 로그인 사용자에게만 노출됩니다.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            href="/auth?mode=login&redirect=%2Fdashboard"
+            className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+          >
+            내 데이터로 시작하기
+          </Link>
+          <Link
+            href="/"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-white"
+          >
+            홈으로 이동
+          </Link>
+        </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="피보호자" value="2명" />
+        <StatCard label="활성 복약 일정" value="5개" variant="success" />
+        <StatCard label="오늘 체크인" value="3건" variant="success" />
+        <StatCard label="오늘 복약 완료율" value="80%" variant="success" />
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-base font-semibold text-slate-900">체험에서 확인 가능한 항목</h3>
+        <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-700">
+          <li>대시보드 레이아웃 및 통계 카드 시각 구조</li>
+          <li>초대/복약/체크인 화면의 주요 섹션 구성</li>
+          <li>모바일/PC 반응형 UI 동작</li>
+        </ul>
+        <p className="mt-3 text-xs text-slate-500">
+          데이터 생성/수정, 초대 수락, API 응답 확인은 로그인 후 이용 가능합니다.
+        </p>
+      </section>
+    </section>
   );
 }
 
