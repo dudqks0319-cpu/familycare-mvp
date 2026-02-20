@@ -60,6 +60,10 @@ PUBLIC_TEST_MODE=on
 `SESSION_ENCRYPTION_KEY`는 인증 세션 쿠키 암호화에 사용됩니다.
 `PUBLIC_TEST_MODE`가 on이면 로그인 없이 전체 테스트가 가능합니다.
 
+## API 키/시크릿 설정 가이드
+
+- `docs/API-KEYS.md` (색상 표시 포함)
+
 ## Supabase SQL 적용
 
 1. Supabase Dashboard → SQL Editor 이동
