@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 
 import { getAuthSessionFromCookie } from "@/lib/auth-session";
 import { getDashboardData } from "@/lib/familycare-db";
+import { getMockDashboardData } from "@/lib/mock-dashboard-data";
+import {
+  PUBLIC_TEST_EMAIL,
+  PUBLIC_TEST_USER_ID,
+  isPublicTestMode,
+} from "@/lib/public-test-mode";
 import { isSupabaseConfigured } from "@/lib/supabase-rest";
 
 function getErrorMessage(error: unknown): string {
@@ -13,23 +19,23 @@ function getErrorMessage(error: unknown): string {
 }
 
 export async function GET() {
-  if (!isSupabaseConfigured()) {
-    return NextResponse.json(
-      {
-        error: "Supabase 환경변수가 설정되지 않았습니다.",
-      },
-      { status: 503 },
-    );
-  }
-
   const session = await getAuthSessionFromCookie();
+  const useMockMode = isPublicTestMode() || !isSupabaseConfigured() || !session;
 
-  if (!session) {
+  if (useMockMode) {
     return NextResponse.json(
       {
-        error: "로그인이 필요합니다.",
+        mode: "public-test",
+        userId: session?.userId || PUBLIC_TEST_USER_ID,
+        email: session?.email || PUBLIC_TEST_EMAIL,
+        generatedAt: new Date().toISOString(),
+        dashboard: getMockDashboardData(),
       },
-      { status: 401 },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      },
     );
   }
 
@@ -38,6 +44,7 @@ export async function GET() {
 
     return NextResponse.json(
       {
+        mode: "authenticated",
         userId: session.userId,
         email: session.email,
         generatedAt: new Date().toISOString(),

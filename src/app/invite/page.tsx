@@ -2,7 +2,8 @@ import Link from "next/link";
 
 import { acceptRecipientInviteAction } from "@/app/invite/actions";
 import { getAuthSessionFromCookie } from "@/lib/auth-session";
-import { getRecipientInviteByToken } from "@/lib/familycare-db";
+import { getRecipientInviteByToken, type RecipientInvite } from "@/lib/familycare-db";
+import { PUBLIC_TEST_EMAIL, isPublicTestMode } from "@/lib/public-test-mode";
 import { isSupabaseConfigured } from "@/lib/supabase-rest";
 
 type InvitePageProps = {
@@ -49,15 +50,37 @@ function statusLabel(status: string): string {
   }
 }
 
+function createMockInvite(token: string): RecipientInvite {
+  const now = new Date();
+
+  return {
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    recipient_id: "11111111-1111-4111-8111-111111111111",
+    invited_email: PUBLIC_TEST_EMAIL,
+    relationship: "가족",
+    can_edit: true,
+    invite_token: token,
+    invited_by: "00000000-0000-4000-8000-000000000001",
+    status: "pending",
+    expires_at: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+    accepted_at: null,
+    accepted_user_id: null,
+    created_at: now.toISOString(),
+    updated_at: now.toISOString(),
+  };
+}
+
 export default async function InvitePage({ searchParams }: InvitePageProps) {
   const params = await searchParams;
   const token = readParam(params, "token");
   const error = readParam(params, "error");
   const configured = isSupabaseConfigured();
+  const publicTestMode = isPublicTestMode();
 
   const session = await getAuthSessionFromCookie();
+  const useMockMode = publicTestMode || !configured || !session;
 
-  if (!session && token) {
+  if (!session && token && !useMockMode) {
     const loginUrl = `/auth?mode=login&redirect=${encodeURIComponent(
       `/invite?token=${token}`,
     )}`;
@@ -87,17 +110,20 @@ export default async function InvitePage({ searchParams }: InvitePageProps) {
   }
 
   const invite =
-    configured && token && session
-      ? await getRecipientInviteByToken(session, token)
-      : null;
+    token && useMockMode
+      ? createMockInvite(token)
+      : configured && token && session
+        ? await getRecipientInviteByToken(session, token)
+        : null;
 
   const isPending = invite?.status === "pending";
   const isExpired =
     invite?.expires_at ? new Date(invite.expires_at) <= new Date() : false;
-  const emailMatches =
-    Boolean(session?.email) &&
-    Boolean(invite?.invited_email) &&
-    session?.email?.toLowerCase() === invite?.invited_email.toLowerCase();
+  const emailMatches = useMockMode
+    ? true
+    : Boolean(session?.email) &&
+      Boolean(invite?.invited_email) &&
+      session?.email?.toLowerCase() === invite?.invited_email.toLowerCase();
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-6 py-12">
@@ -109,13 +135,13 @@ export default async function InvitePage({ searchParams }: InvitePageProps) {
         </p>
       </header>
 
-      {!configured ? (
+      {useMockMode ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          Supabase 환경변수가 설정되지 않았습니다.
+          공개 테스트 모드입니다. 초대 수락은 시뮬레이션으로 동작합니다.
         </section>
       ) : null}
 
-      {!session ? (
+      {!useMockMode && !session ? (
         <section className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
           초대를 수락하려면 먼저 로그인해 주세요.
         </section>
@@ -147,7 +173,7 @@ export default async function InvitePage({ searchParams }: InvitePageProps) {
               <span className="font-medium">초대 이메일:</span> {invite.invited_email}
             </li>
             <li>
-              <span className="font-medium">현재 로그인:</span> {session?.email || "(비로그인)"}
+              <span className="font-medium">현재 계정:</span> {session?.email || PUBLIC_TEST_EMAIL}
             </li>
             <li>
               <span className="font-medium">관계:</span> {invite.relationship || "미지정"}
@@ -178,7 +204,7 @@ export default async function InvitePage({ searchParams }: InvitePageProps) {
               <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
                 <p className="font-semibold">이메일이 일치하지 않습니다.</p>
                 <p className="mt-1">초대받은 이메일: {invite.invited_email}</p>
-                <p>현재 로그인: {session?.email || "없음"}</p>
+                <p>현재 계정: {session?.email || PUBLIC_TEST_EMAIL}</p>
               </div>
             )
           ) : null}

@@ -2,8 +2,13 @@ import Link from "next/link";
 
 import { logoutAction } from "@/app/auth/actions";
 import { saveProfileAction } from "@/app/settings/actions";
-import { requireAuthSession } from "@/lib/auth-session";
+import { getAuthSessionFromCookie } from "@/lib/auth-session";
 import { getMyProfile } from "@/lib/familycare-db";
+import {
+  PUBLIC_TEST_EMAIL,
+  PUBLIC_TEST_USER_ID,
+  isPublicTestMode,
+} from "@/lib/public-test-mode";
 import { isSupabaseConfigured } from "@/lib/supabase-rest";
 
 type SettingsPageProps = {
@@ -36,13 +41,26 @@ function formatDateTime(dateTime: string): string {
 }
 
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
-  const session = await requireAuthSession();
+  const session = await getAuthSessionFromCookie();
   const params = await searchParams;
   const message = readParam(params, "message");
   const error = readParam(params, "error");
   const configured = isSupabaseConfigured();
+  const useMockMode = isPublicTestMode() || !configured || !session;
 
-  const profile = configured ? await getMyProfile(session) : null;
+  const profile =
+    !useMockMode && session
+      ? await getMyProfile(session)
+      : {
+          full_name: "테스트 사용자",
+          phone: "010-0000-0000",
+        };
+
+  const accountEmail = session?.email || PUBLIC_TEST_EMAIL;
+  const accountUserId = session?.userId || PUBLIC_TEST_USER_ID;
+  const accountExpiresAtIso = session
+    ? new Date(session.expiresAt * 1000).toISOString()
+    : "2099-01-01T00:00:00.000Z";
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-6 px-6 py-10">
@@ -68,14 +86,23 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           >
             홈
           </Link>
-          <form action={logoutAction}>
-            <button
-              type="submit"
-              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+          {session && !useMockMode ? (
+            <form action={logoutAction}>
+              <button
+                type="submit"
+                className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+              >
+                로그아웃
+              </button>
+            </form>
+          ) : (
+            <Link
+              href="/auth?mode=login&redirect=%2Fsettings"
+              className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
             >
-              로그아웃
-            </button>
-          </form>
+              로그인 전환
+            </Link>
+          )}
         </div>
       </header>
 
@@ -91,9 +118,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         </section>
       ) : null}
 
-      {!configured ? (
+      {useMockMode ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          Supabase 환경변수가 설정되지 않아 설정 저장을 사용할 수 없습니다.
+          공개 테스트 모드입니다. 저장 버튼은 시뮬레이션으로 동작합니다.
         </section>
       ) : null}
 
@@ -137,14 +164,14 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         <h2 className="text-lg font-semibold text-slate-900">계정 정보</h2>
         <ul className="mt-3 space-y-2 text-sm text-slate-700">
           <li>
-            <span className="font-medium">이메일:</span> {session.email || "(없음)"}
+            <span className="font-medium">이메일:</span> {accountEmail}
           </li>
           <li>
-            <span className="font-medium">User ID:</span> {session.userId}
+            <span className="font-medium">User ID:</span> {accountUserId}
           </li>
           <li>
             <span className="font-medium">세션 만료:</span>{" "}
-            {formatDateTime(new Date(session.expiresAt * 1000).toISOString())}
+            {formatDateTime(accountExpiresAtIso)}
           </li>
         </ul>
       </section>

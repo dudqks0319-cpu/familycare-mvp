@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireAuthSession } from "@/lib/auth-session";
+import { getAuthSessionFromCookie } from "@/lib/auth-session";
 import { upsertMyProfile } from "@/lib/familycare-db";
+import { isPublicTestMode } from "@/lib/public-test-mode";
 import { isSupabaseConfigured } from "@/lib/supabase-rest";
 
 function asString(value: FormDataEntryValue | null): string {
@@ -20,13 +21,12 @@ function getErrorMessage(error: unknown): string {
 }
 
 export async function saveProfileAction(formData: FormData): Promise<void> {
-  if (!isSupabaseConfigured()) {
-    redirect(
-      "/settings?error=Supabase%20환경변수가%20설정되지%20않았습니다.",
-    );
+  const session = await getAuthSessionFromCookie();
+
+  if (isPublicTestMode() || !isSupabaseConfigured() || !session) {
+    redirect("/settings?message=테스트%20모드에서%20프로필%20저장을%20시뮬레이션했습니다.");
   }
 
-  const session = await requireAuthSession();
   const fullName = asString(formData.get("fullName"));
   const phone = asString(formData.get("phone"));
 

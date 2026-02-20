@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireAuthSession } from "@/lib/auth-session";
+import { getAuthSessionFromCookie } from "@/lib/auth-session";
 import {
   addRecipientMember,
   createCheckin,
@@ -19,6 +19,7 @@ import {
   type MedicationLogStatus,
   updateRecipientMemberPermission,
 } from "@/lib/familycare-db";
+import { isPublicTestMode } from "@/lib/public-test-mode";
 import { isSupabaseConfigured } from "@/lib/supabase-rest";
 
 const UUID_REGEX =
@@ -84,16 +85,22 @@ function succeed(message: string): never {
   redirect(`/dashboard?message=${encodeURIComponent(message)}`);
 }
 
-function ensureConfigured(): void {
-  if (!isSupabaseConfigured()) {
-    fail("Supabase 환경변수가 설정되지 않았습니다. .env.local을 확인해 주세요.");
+async function getActionSessionOrTestMode(
+  testMessage: string,
+): Promise<NonNullable<Awaited<ReturnType<typeof getAuthSessionFromCookie>>>> {
+  const session = await getAuthSessionFromCookie();
+
+  if (isPublicTestMode() || !isSupabaseConfigured() || !session) {
+    succeed(`테스트 모드: ${testMessage}`);
   }
+
+  return session;
 }
 
 export async function createRecipientAction(formData: FormData): Promise<void> {
-  ensureConfigured();
-
-  const session = await requireAuthSession();
+  const session = await getActionSessionOrTestMode(
+    "피보호자 등록을 시뮬레이션으로 처리했습니다.",
+  );
   const name = asString(formData.get("name"));
   const birthDate = asString(formData.get("birthDate"));
   const notes = asString(formData.get("notes"));
@@ -115,9 +122,9 @@ export async function createRecipientAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteRecipientAction(formData: FormData): Promise<void> {
-  ensureConfigured();
-
-  const session = await requireAuthSession();
+  const session = await getActionSessionOrTestMode(
+    "피보호자 삭제를 시뮬레이션으로 처리했습니다.",
+  );
   const recipientId = asUUID(formData.get("recipientId"));
 
   if (!recipientId) {
@@ -135,9 +142,9 @@ export async function deleteRecipientAction(formData: FormData): Promise<void> {
 export async function addRecipientMemberAction(
   formData: FormData,
 ): Promise<void> {
-  ensureConfigured();
-
-  const session = await requireAuthSession();
+  const session = await getActionSessionOrTestMode(
+    "돌봄 멤버 추가를 시뮬레이션으로 처리했습니다.",
+  );
   const recipientId = asUUID(formData.get("recipientId"));
   const userId = asUUID(formData.get("userId"));
   const relationship = asString(formData.get("relationship"));
@@ -163,9 +170,9 @@ export async function addRecipientMemberAction(
 export async function createRecipientInviteAction(
   formData: FormData,
 ): Promise<void> {
-  ensureConfigured();
-
-  const session = await requireAuthSession();
+  const session = await getActionSessionOrTestMode(
+    "초대 링크 생성을 시뮬레이션으로 처리했습니다.",
+  );
   const recipientId = asUUID(formData.get("recipientId"));
   const invitedEmail = asEmail(formData.get("invitedEmail"));
   const relationship = asString(formData.get("relationship"));
@@ -191,9 +198,9 @@ export async function createRecipientInviteAction(
 export async function revokeRecipientInviteAction(
   formData: FormData,
 ): Promise<void> {
-  ensureConfigured();
-
-  const session = await requireAuthSession();
+  const session = await getActionSessionOrTestMode(
+    "초대 취소를 시뮬레이션으로 처리했습니다.",
+  );
   const inviteId = asUUID(formData.get("inviteId"));
 
   if (!inviteId) {
@@ -211,9 +218,9 @@ export async function revokeRecipientInviteAction(
 export async function updateRecipientMemberPermissionAction(
   formData: FormData,
 ): Promise<void> {
-  ensureConfigured();
-
-  const session = await requireAuthSession();
+  const session = await getActionSessionOrTestMode(
+    "멤버 권한 변경을 시뮬레이션으로 처리했습니다.",
+  );
   const recipientId = asUUID(formData.get("recipientId"));
   const userId = asUUID(formData.get("userId"));
   const canEdit = asBoolean(formData.get("canEdit"));
@@ -237,9 +244,9 @@ export async function updateRecipientMemberPermissionAction(
 export async function removeRecipientMemberAction(
   formData: FormData,
 ): Promise<void> {
-  ensureConfigured();
-
-  const session = await requireAuthSession();
+  const session = await getActionSessionOrTestMode(
+    "돌봄 멤버 제거를 시뮬레이션으로 처리했습니다.",
+  );
   const recipientId = asUUID(formData.get("recipientId"));
   const userId = asUUID(formData.get("userId"));
 
@@ -265,9 +272,9 @@ export async function removeRecipientMemberAction(
 export async function createMedicationScheduleAction(
   formData: FormData,
 ): Promise<void> {
-  ensureConfigured();
-
-  const session = await requireAuthSession();
+  const session = await getActionSessionOrTestMode(
+    "복약 일정 등록을 시뮬레이션으로 처리했습니다.",
+  );
   const recipientId = asUUID(formData.get("recipientId"));
   const medicationName = asString(formData.get("medicationName"));
   const dosage = asString(formData.get("dosage"));
@@ -295,9 +302,9 @@ export async function createMedicationScheduleAction(
 export async function toggleMedicationScheduleAction(
   formData: FormData,
 ): Promise<void> {
-  ensureConfigured();
-
-  const session = await requireAuthSession();
+  const session = await getActionSessionOrTestMode(
+    "복약 일정 상태 변경을 시뮬레이션으로 처리했습니다.",
+  );
   const medicationScheduleId = asUUID(formData.get("medicationScheduleId"));
   const isActive = asBoolean(formData.get("isActive"));
 
@@ -323,9 +330,9 @@ export async function toggleMedicationScheduleAction(
 export async function createMedicationLogAction(
   formData: FormData,
 ): Promise<void> {
-  ensureConfigured();
-
-  const session = await requireAuthSession();
+  const session = await getActionSessionOrTestMode(
+    "복약 기록 저장을 시뮬레이션으로 처리했습니다.",
+  );
   const recipientId = asUUID(formData.get("recipientId"));
   const rawScheduleId = asString(formData.get("scheduleId"));
   const scheduleId = rawScheduleId
@@ -362,9 +369,9 @@ export async function createMedicationLogAction(
 }
 
 export async function createCheckinAction(formData: FormData): Promise<void> {
-  ensureConfigured();
-
-  const session = await requireAuthSession();
+  const session = await getActionSessionOrTestMode(
+    "체크인 등록을 시뮬레이션으로 처리했습니다.",
+  );
   const recipientId = asUUID(formData.get("recipientId"));
   const statusValue = asString(formData.get("status"));
   const memo = asString(formData.get("memo"));

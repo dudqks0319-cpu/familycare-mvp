@@ -2,8 +2,9 @@
 
 import { redirect } from "next/navigation";
 
-import { requireAuthSession } from "@/lib/auth-session";
+import { getAuthSessionFromCookie } from "@/lib/auth-session";
 import { acceptRecipientInvite } from "@/lib/familycare-db";
+import { isPublicTestMode } from "@/lib/public-test-mode";
 import { isSupabaseConfigured } from "@/lib/supabase-rest";
 
 const UUID_REGEX =
@@ -24,17 +25,15 @@ function getErrorMessage(error: unknown): string {
 export async function acceptRecipientInviteAction(
   formData: FormData,
 ): Promise<void> {
-  if (!isSupabaseConfigured()) {
-    redirect(
-      "/auth?mode=login&error=Supabase%20환경변수가%20설정되지%20않았습니다.",
-    );
-  }
-
-  const session = await requireAuthSession();
+  const session = await getAuthSessionFromCookie();
   const token = asString(formData.get("token"));
 
   if (!UUID_REGEX.test(token)) {
     redirect("/invite?error=초대%20토큰이%20유효하지%20않습니다.");
+  }
+
+  if (isPublicTestMode() || !isSupabaseConfigured() || !session) {
+    redirect("/dashboard?message=테스트%20모드에서%20초대%20수락을%20시뮬레이션했습니다.");
   }
 
   try {

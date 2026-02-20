@@ -14,8 +14,14 @@ import {
   updateRecipientMemberPermissionAction,
 } from "@/app/dashboard/actions";
 import { CopyButton } from "@/app/dashboard/components/copy-button";
-import { getAuthSessionFromCookie, requireAuthSession } from "@/lib/auth-session";
+import { getAuthSessionFromCookie } from "@/lib/auth-session";
 import { getDashboardData } from "@/lib/familycare-db";
+import { getMockDashboardData } from "@/lib/mock-dashboard-data";
+import {
+  PUBLIC_TEST_EMAIL,
+  PUBLIC_TEST_USER_ID,
+  isPublicTestMode,
+} from "@/lib/public-test-mode";
 import { isSupabaseConfigured } from "@/lib/supabase-rest";
 
 type DashboardPageProps = {
@@ -123,7 +129,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const message = readParam(params, "message");
 
   const configured = isSupabaseConfigured();
-  const isGuest = !session;
+  const publicTestMode = isPublicTestMode();
+  const useMockMode = publicTestMode || !configured || !session;
+
+  const effectiveUserId = session?.userId ?? PUBLIC_TEST_USER_ID;
+  const effectiveEmail = session?.email || PUBLIC_TEST_EMAIL;
+  const dashboardData = useMockMode
+    ? getMockDashboardData()
+    : await getDashboardData(session);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-6 py-10">
@@ -137,9 +150,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             피보호자 관리, 복약 일정/기록, 체크인 알림을 한 화면에서 운영합니다.
           </p>
           <p className="text-xs text-slate-500">
-            {session
-              ? `로그인 계정: ${session.email || session.userId}`
-              : "비회원 미리보기 모드입니다. 실제 데이터 확인/수정은 로그인 후 가능합니다."}
+            {useMockMode
+              ? `공개 테스트 모드 계정: ${effectiveEmail}`
+              : `로그인 계정: ${effectiveEmail}`}
           </p>
         </div>
 
@@ -150,42 +163,37 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           >
             홈
           </Link>
-
-          {session ? (
-            <>
-              <Link
-                href="/settings"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
+          <Link
+            href="/settings"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
+          >
+            설정
+          </Link>
+          {session && !useMockMode ? (
+            <form action={logoutAction}>
+              <button
+                type="submit"
+                className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
               >
-                설정
-              </Link>
-              <form action={logoutAction}>
-                <button
-                  type="submit"
-                  className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  로그아웃
-                </button>
-              </form>
-            </>
+                로그아웃
+              </button>
+            </form>
           ) : (
             <Link
               href="/auth?mode=login&redirect=%2Fdashboard"
               className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
             >
-              로그인/회원가입
+              로그인 전환
             </Link>
           )}
         </div>
       </header>
 
-      {session && !configured ? (
+      {useMockMode ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-semibold">Supabase 환경변수를 먼저 설정해 주세요.</p>
+          <p className="font-semibold">임시 공개 테스트 모드가 켜져 있습니다.</p>
           <p>
-            <code>NEXT_PUBLIC_SUPABASE_URL</code>,{" "}
-            <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> 값을 <code>.env.local</code>에 넣은 뒤
-            다시 시도해 주세요.
+            로그인 없이 모든 화면/버튼을 테스트할 수 있으며, 액션은 시뮬레이션으로 처리됩니다.
           </p>
         </section>
       ) : null}
@@ -202,65 +210,33 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </section>
       ) : null}
 
-      {isGuest ? <GuestDashboardPreview /> : null}
-      {session && configured ? <DashboardContent sessionUserId={session.userId} /> : null}
+      <DashboardContent
+        sessionUserId={effectiveUserId}
+        dashboardData={dashboardData}
+        isMockMode={useMockMode}
+      />
     </main>
   );
 }
 
-function GuestDashboardPreview() {
-  return (
-    <section className="space-y-6">
-      <section className="rounded-2xl border border-sky-200 bg-sky-50 p-6">
-        <h2 className="text-lg font-semibold text-sky-900">비회원 체험 모드</h2>
-        <p className="mt-2 text-sm text-sky-800">
-          로그인 없이도 화면 구성을 확인하실 수 있도록 샘플 데이터를 보여드립니다.
-          실제 가족 데이터는 안전하게 로그인 사용자에게만 노출됩니다.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Link
-            href="/auth?mode=login&redirect=%2Fdashboard"
-            className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
-          >
-            내 데이터로 시작하기
-          </Link>
-          <Link
-            href="/"
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-white"
-          >
-            홈으로 이동
-          </Link>
-        </div>
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="피보호자" value="2명" />
-        <StatCard label="활성 복약 일정" value="5개" variant="success" />
-        <StatCard label="오늘 체크인" value="3건" variant="success" />
-        <StatCard label="오늘 복약 완료율" value="80%" variant="success" />
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-base font-semibold text-slate-900">체험에서 확인 가능한 항목</h3>
-        <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-700">
-          <li>대시보드 레이아웃 및 통계 카드 시각 구조</li>
-          <li>초대/복약/체크인 화면의 주요 섹션 구성</li>
-          <li>모바일/PC 반응형 UI 동작</li>
-        </ul>
-        <p className="mt-3 text-xs text-slate-500">
-          데이터 생성/수정, 초대 수락, API 응답 확인은 로그인 후 이용 가능합니다.
-        </p>
-      </section>
-    </section>
-  );
-}
-
-async function DashboardContent({ sessionUserId }: { sessionUserId: string }) {
-  const session = await requireAuthSession();
-  const dashboardData = await getDashboardData(session);
+function DashboardContent({
+  sessionUserId,
+  dashboardData,
+  isMockMode,
+}: {
+  sessionUserId: string;
+  dashboardData: Awaited<ReturnType<typeof getDashboardData>>;
+  isMockMode: boolean;
+}) {
 
   return (
     <div className="space-y-8">
+      {isMockMode ? (
+        <section className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+          버튼/폼은 모두 동작하도록 열어두었고, 임시 테스트 환경에서는 실제 저장 대신 시뮬레이션 메시지를 반환합니다.
+        </section>
+      ) : null}
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="피보호자" value={`${dashboardData.stats.recipientCount}명`} />
         <StatCard

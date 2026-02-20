@@ -1,9 +1,15 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+import { isPublicTestMode } from "@/lib/public-test-mode";
+
 const AUTH_COOKIE_NAME = "familycare_auth";
 
 export function proxy(request: NextRequest) {
+  if (isPublicTestMode()) {
+    return NextResponse.next();
+  }
+
   const pathname = request.nextUrl.pathname;
 
   const isProtectedPath =
