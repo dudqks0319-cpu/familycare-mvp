@@ -13,6 +13,7 @@ type ActivityCategory =
   | "daycare_dropoff"
   | "daycare_pickup"
   | "medication"
+  | "temperature"
   | "hospital"
   | "vaccine_shot"
   | "vaccine_booking";
@@ -152,6 +153,12 @@ const CATEGORY_META: Record<
     badgeClass: "bg-pink-100 text-pink-700",
     recipientTypes: ["child", "elder"],
   },
+  temperature: {
+    label: "체온",
+    color: "#f59e0b",
+    badgeClass: "bg-amber-100 text-amber-700",
+    recipientTypes: ["child", "elder"],
+  },
   hospital: {
     label: "병원 방문",
     color: "#ef4444",
@@ -271,6 +278,14 @@ function formatDurationLabel(totalSeconds: number): string {
   return `${minutes}분 ${String(seconds).padStart(2, "0")}초`;
 }
 
+function escapeCsvCell(value: string): string {
+  if (value.includes(",") || value.includes("\n") || value.includes('"')) {
+    return `"${value.replaceAll('"', '""')}"`;
+  }
+
+  return value;
+}
+
 function createInitialPlannerState(): PlannerState {
   const now = new Date();
   const tomorrow = new Date(now);
@@ -340,6 +355,14 @@ function createInitialPlannerState(): PlannerState {
         category: "medication",
         title: "감기약",
         notes: "2.5ml 복용",
+      },
+      {
+        id: createId(),
+        date: today,
+        time: "20:40",
+        category: "temperature",
+        title: "체온 측정",
+        notes: "37.4°C",
       },
     ]),
     appointments: [
@@ -546,6 +569,11 @@ export function PlannerClient() {
     note: "",
   });
 
+  const [temperatureDraft, setTemperatureDraft] = useState({
+    celsius: "37.0",
+    note: "",
+  });
+
   const [activeTimer, setActiveTimer] = useState<{
     mode: "feeding" | "sleep";
     startedAt: number;
@@ -606,6 +634,7 @@ export function PlannerClient() {
         daycare_dropoff: 0,
         daycare_pickup: 0,
         medication: 0,
+        temperature: 0,
         hospital: 0,
         vaccine_shot: 0,
         vaccine_booking: 0,
@@ -703,6 +732,92 @@ export function PlannerClient() {
     item.takenDates.includes(selectedDate),
   ).length;
 
+  const daySummary = useMemo(() => {
+    const byCategory = dayActivities.reduce<Record<ActivityCategory, number>>(
+      (acc, entry) => {
+        acc[entry.category] = (acc[entry.category] ?? 0) + 1;
+        return acc;
+      },
+      {
+        meal: 0,
+        snack: 0,
+        nap: 0,
+        diaper: 0,
+        daycare_dropoff: 0,
+        daycare_pickup: 0,
+        medication: 0,
+        temperature: 0,
+        hospital: 0,
+        vaccine_shot: 0,
+        vaccine_booking: 0,
+      },
+    );
+
+    return {
+      total: dayActivities.length,
+      byCategory,
+    };
+  }, [dayActivities]);
+
+  const weekSummary = useMemo(() => {
+    const selected = new Date(`${selectedDate}T00:00:00`);
+    const weekday = selected.getDay();
+    const moveToMonday = weekday === 0 ? -6 : 1 - weekday;
+
+    const start = new Date(selected);
+    start.setDate(selected.getDate() + moveToMonday);
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+
+    const startKey = toDateKey(start);
+    const endKey = toDateKey(end);
+
+    const weeklyActivities = planner.activities.filter(
+      (entry) => entry.date >= startKey && entry.date <= endKey,
+    );
+
+    const checkedMedicationCount = planner.medicationRoutines.reduce((sum, routine) => {
+      const count = routine.takenDates.filter(
+        (date) => date >= startKey && date <= endKey,
+      ).length;
+
+      return sum + count;
+    }, 0);
+
+    const medicationTargetCount = planner.medicationRoutines.length * 7;
+    const medicationRate =
+      medicationTargetCount > 0
+        ? Math.round((checkedMedicationCount / medicationTargetCount) * 100)
+        : 0;
+
+    return {
+      startKey,
+      endKey,
+      activityCount: weeklyActivities.length,
+      checkedMedicationCount,
+      medicationTargetCount,
+      medicationRate,
+    };
+  }, [planner.activities, planner.medicationRoutines, selectedDate]);
+
+  const hourlyActivityCounts = useMemo(() => {
+    const counts = Array.from({ length: 24 }, () => 0);
+
+    dayActivities.forEach((entry) => {
+      const hour = Number.parseInt(entry.time.split(":")[0] ?? "0", 10);
+      if (!Number.isNaN(hour) && hour >= 0 && hour <= 23) {
+        counts[hour] += 1;
+      }
+    });
+
+    return counts;
+  }, [dayActivities]);
+
+  const maxHourlyActivityCount = useMemo(() => {
+    return Math.max(1, ...hourlyActivityCounts);
+  }, [hourlyActivityCounts]);
+
   const timerElapsedSeconds = activeTimer
     ? Math.max(0, Math.floor((timerNow - activeTimer.startedAt) / 1000))
     : 0;
@@ -780,6 +895,85 @@ export function PlannerClient() {
 
     addQuickActivity("meal", `빠른기록 · ${feedLabel}`, autoNotes.join(" · "));
     setFeedingDraft((prev) => ({ ...prev, note: "" }));
+  };
+
+  const addTemperatureRecord = () => {
+    const temperatureValue = temperatureDraft.celsius.trim();
+    const note = temperatureDraft.note.trim();
+
+    if (!temperatureValue) {
+      return;
+    }
+
+    const notes = [
+      `${temperatureValue}°C`,
+      note,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    addQuickActivity("temperature", "빠른기록 · 체온 측정", notes);
+
+    setTemperatureDraft((prev) => ({
+      ...prev,
+      note: "",
+    }));
+  };
+
+  const exportSelectedDateCsv = () => {
+    const rows: string[][] = [["유형", "날짜", "시간", "분류", "제목", "메모"]];
+
+    dayActivities.forEach((entry) => {
+      rows.push([
+        "활동",
+        entry.date,
+        entry.time,
+        CATEGORY_META[entry.category].label,
+        entry.title,
+        entry.notes,
+      ]);
+    });
+
+    sortedAppointments
+      .filter((appointment) => appointment.date === selectedDate)
+      .forEach((appointment) => {
+        rows.push([
+          "예약",
+          appointment.date,
+          appointment.time,
+          appointment.kind === "vaccine" ? "접종" : "병원",
+          appointment.title,
+          appointment.description,
+        ]);
+      });
+
+    planner.vaccineRecords
+      .filter((record) => record.date === selectedDate)
+      .forEach((record) => {
+        rows.push([
+          "접종완료",
+          record.date,
+          "",
+          "접종",
+          record.name,
+          record.note,
+        ]);
+      });
+
+    const csvContent = rows
+      .map((row) => row.map((cell) => escapeCsvCell(cell ?? "")).join(","))
+      .join("\n");
+
+    const blob = new Blob([`\uFEFF${csvContent}`], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `familycare-${selectedDate}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const startTimer = (mode: "feeding" | "sleep") => {
@@ -1191,18 +1385,55 @@ export function PlannerClient() {
               언제 무엇을 했는지 시간 단위로 기록하고, 동그란 그래프로 한눈에 확인합니다.
             </p>
           </div>
-          <label className="text-sm text-slate-700">
-            기준 날짜
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(event) => {
-                setSelectedDate(event.target.value);
-                setActivityDraft((prev) => ({ ...prev, date: event.target.value }));
-              }}
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-            />
-          </label>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-sm text-slate-700">
+              기준 날짜
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(event) => {
+                  setSelectedDate(event.target.value);
+                  setActivityDraft((prev) => ({ ...prev, date: event.target.value }));
+                }}
+                className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={exportSelectedDateCsv}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              선택일 CSV 내보내기
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-900">일간 요약 ({selectedDate})</p>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-slate-700">
+              <p>총 기록: <span className="font-semibold">{daySummary.total}건</span></p>
+              <p>식사: <span className="font-semibold">{daySummary.byCategory.meal}건</span></p>
+              <p>수면: <span className="font-semibold">{daySummary.byCategory.nap}건</span></p>
+              <p>기저귀: <span className="font-semibold">{daySummary.byCategory.diaper}건</span></p>
+              <p>복약: <span className="font-semibold">{daySummary.byCategory.medication}건</span></p>
+              <p>체온: <span className="font-semibold">{daySummary.byCategory.temperature}건</span></p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-900">
+              주간 요약 ({weekSummary.startKey} ~ {weekSummary.endKey})
+            </p>
+            <div className="mt-2 space-y-1 text-sm text-slate-700">
+              <p>주간 활동: <span className="font-semibold">{weekSummary.activityCount}건</span></p>
+              <p>
+                복약 체크: <span className="font-semibold">{weekSummary.checkedMedicationCount}</span>
+                /{weekSummary.medicationTargetCount}회
+              </p>
+              <p>복약 달성률: <span className="font-semibold">{weekSummary.medicationRate}%</span></p>
+            </div>
+          </div>
         </div>
 
         <div className="mt-5 grid gap-6 lg:grid-cols-[260px_1fr]">
@@ -1363,6 +1594,13 @@ export function PlannerClient() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => addQuickActivity("medication", "빠른기록 · 해열제 복용")}
+                    className="rounded-lg border border-pink-300 px-3 py-2 text-sm text-pink-700 hover:bg-pink-50"
+                  >
+                    해열제 원탭
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => addQuickActivity("diaper", "빠른기록 · 기저귀(소변)")}
                     className="rounded-lg border border-lime-300 px-3 py-2 text-sm text-lime-700 hover:bg-lime-50"
                   >
@@ -1482,6 +1720,58 @@ export function PlannerClient() {
                   >
                     수유 세분화 기록 추가
                   </button>
+
+                  <div className="mt-4 border-t border-slate-200 pt-4">
+                    <p className="text-sm font-semibold text-slate-900">체온/투약 빠른 기록</p>
+                    <div className="mt-2 grid gap-3 md:grid-cols-2">
+                      <label className="text-sm text-slate-700">
+                        체온(°C)
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={temperatureDraft.celsius}
+                          onChange={(event) =>
+                            setTemperatureDraft((prev) => ({
+                              ...prev,
+                              celsius: event.target.value,
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                        />
+                      </label>
+                      <label className="text-sm text-slate-700">
+                        메모
+                        <input
+                          value={temperatureDraft.note}
+                          onChange={(event) =>
+                            setTemperatureDraft((prev) => ({
+                              ...prev,
+                              note: event.target.value,
+                            }))
+                          }
+                          placeholder="예: 해열제 30분 후 재측정"
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={addTemperatureRecord}
+                        className="rounded-lg border border-amber-300 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-50"
+                      >
+                        체온 기록 추가
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => addQuickActivity("medication", "빠른기록 · 감기약 복용", "체온기록 연계")}
+                        className="rounded-lg border border-pink-300 px-3 py-2 text-sm font-semibold text-pink-700 hover:bg-pink-50"
+                      >
+                        투약 기록 추가
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="rounded-xl border border-slate-200 p-4">
@@ -1569,6 +1859,32 @@ export function PlannerClient() {
             ))
           )}
         </ul>
+
+        <div className="mt-5 rounded-xl border border-slate-200 p-4">
+          <p className="text-sm font-semibold text-slate-900">24시간 패턴 차트</p>
+          <p className="mt-1 text-xs text-slate-500">
+            선택한 날짜의 시간대별 활동 건수를 막대로 표시합니다.
+          </p>
+
+          <div className="mt-3 grid gap-1.5">
+            {hourlyActivityCounts.map((count, hour) => {
+              const widthRatio = count === 0 ? 4 : Math.max(8, (count / maxHourlyActivityCount) * 100);
+
+              return (
+                <div key={hour} className="grid grid-cols-[42px_1fr_32px] items-center gap-2 text-xs text-slate-600">
+                  <span>{String(hour).padStart(2, "0")}시</span>
+                  <div className="h-2 rounded-full bg-slate-200">
+                    <div
+                      className="h-2 rounded-full bg-sky-500"
+                      style={{ width: `${widthRatio}%` }}
+                    />
+                  </div>
+                  <span className="text-right font-medium">{count}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </section>
 
       {planner.recipientType === "child" ? (
@@ -2251,7 +2567,7 @@ export function PlannerClient() {
         <h3 className="text-base font-semibold text-slate-900">현재 사용 가능한 기능</h3>
         <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-700">
           <li>보호자/피보호자 정보 입력 + 대상 유형(영유아/어르신) 전환</li>
-          <li>원탭 빠른기록(식사/낮잠/복약/등하원/병원/기저귀) + 24시간 활동 기록</li>
+          <li>원탭 빠른기록(식사/낮잠/복약/체온/등하원/병원/기저귀) + 24시간 활동 기록</li>
           <li>수유 세분화 입력(모유 좌/우, 분유, 이유식)</li>
           <li>수유/수면 타이머(시작/종료 후 소요시간 자동 기록)</li>
           <li>어르신 가독성 모드(큰 글씨) 지원</li>
