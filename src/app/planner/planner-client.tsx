@@ -1,486 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-type RecipientType = "child" | "elder";
-type ScheduleType = "weekday" | "weekend";
-
-type ActivityCategory =
-  | "meal"
-  | "snack"
-  | "nap"
-  | "diaper"
-  | "daycare_dropoff"
-  | "daycare_pickup"
-  | "medication"
-  | "temperature"
-  | "hospital"
-  | "vaccine_shot"
-  | "vaccine_booking";
-
-type ActivityEntry = {
-  id: string;
-  date: string;
-  time: string;
-  category: ActivityCategory;
-  title: string;
-  notes: string;
-};
-
-type AppointmentKind = "hospital" | "vaccine";
-
-type Appointment = {
-  id: string;
-  date: string;
-  time: string;
-  kind: AppointmentKind;
-  title: string;
-  description: string;
-  completed: boolean;
-};
-
-type VaccineRecord = {
-  id: string;
-  name: string;
-  date: string;
-  note: string;
-  sourceAppointmentId?: string;
-};
-
-type ScheduleItem = {
-  id: string;
-  time: string;
-  label: string;
-};
-
-type MedicationRoutineItem = {
-  id: string;
-  name: string;
-  dosage: string;
-  time: string;
-  note: string;
-  takenDates: string[];
-};
-
-type PlannerState = {
-  guardianName: string;
-  recipientName: string;
-  recipientType: RecipientType;
-  ageMonths: number;
-  elderLargeText: boolean;
-  activities: ActivityEntry[];
-  appointments: Appointment[];
-  vaccineRecords: VaccineRecord[];
-  medicationRoutines: MedicationRoutineItem[];
-  schedules: {
-    weekday: ScheduleItem[];
-    weekend: ScheduleItem[];
-  };
-};
-
-type PlannerTab = "today" | "record" | "health" | "schedule" | "report";
-
-type FeedingType = "breast_left" | "breast_right" | "formula" | "baby_food";
-
-const FEEDING_TYPE_LABEL: Record<FeedingType, string> = {
-  breast_left: "모유(왼쪽)",
-  breast_right: "모유(오른쪽)",
-  formula: "분유",
-  baby_food: "이유식",
-};
-
-const STORAGE_KEY = "familycare_planner_v1";
-
-const CATEGORY_META: Record<
+import {
+  CATEGORY_META,
+  EMPTY_CATEGORY_COUNTS,
+  FEEDING_TYPE_LABEL,
+  PLANNER_TABS,
+  STORAGE_KEY,
+  VACCINE_HELP,
+} from "@/app/planner/constants";
+import type {
   ActivityCategory,
-  {
-    label: string;
-    color: string;
-    badgeClass: string;
-    recipientTypes: RecipientType[];
-  }
-> = {
-  meal: {
-    label: "식사",
-    color: "#0284c7",
-    badgeClass: "bg-sky-100 text-sky-700",
-    recipientTypes: ["child", "elder"],
-  },
-  snack: {
-    label: "간식",
-    color: "#f97316",
-    badgeClass: "bg-orange-100 text-orange-700",
-    recipientTypes: ["child"],
-  },
-  nap: {
-    label: "수면/낮잠",
-    color: "#8b5cf6",
-    badgeClass: "bg-violet-100 text-violet-700",
-    recipientTypes: ["child", "elder"],
-  },
-  diaper: {
-    label: "기저귀",
-    color: "#65a30d",
-    badgeClass: "bg-lime-100 text-lime-700",
-    recipientTypes: ["child"],
-  },
-  daycare_dropoff: {
-    label: "어린이집 등원",
-    color: "#10b981",
-    badgeClass: "bg-emerald-100 text-emerald-700",
-    recipientTypes: ["child"],
-  },
-  daycare_pickup: {
-    label: "어린이집 하원",
-    color: "#14b8a6",
-    badgeClass: "bg-teal-100 text-teal-700",
-    recipientTypes: ["child"],
-  },
-  medication: {
-    label: "약 복용",
-    color: "#ec4899",
-    badgeClass: "bg-pink-100 text-pink-700",
-    recipientTypes: ["child", "elder"],
-  },
-  temperature: {
-    label: "체온",
-    color: "#f59e0b",
-    badgeClass: "bg-amber-100 text-amber-700",
-    recipientTypes: ["child", "elder"],
-  },
-  hospital: {
-    label: "병원 방문",
-    color: "#ef4444",
-    badgeClass: "bg-rose-100 text-rose-700",
-    recipientTypes: ["child", "elder"],
-  },
-  vaccine_shot: {
-    label: "접종 완료",
-    color: "#6366f1",
-    badgeClass: "bg-indigo-100 text-indigo-700",
-    recipientTypes: ["child"],
-  },
-  vaccine_booking: {
-    label: "접종 예약",
-    color: "#a855f7",
-    badgeClass: "bg-purple-100 text-purple-700",
-    recipientTypes: ["child"],
-  },
-};
-
-const PLANNER_TABS: Array<{ id: PlannerTab; label: string }> = [
-  { id: "today", label: "오늘" },
-  { id: "record", label: "기록" },
-  { id: "health", label: "건강" },
-  { id: "schedule", label: "일정" },
-  { id: "report", label: "리포트" },
-];
-
-const VACCINE_HELP: Record<string, string> = {
-  BCG: "결핵 예방. 생후 초기 1회 접종 권장",
-  "DTaP-IPV": "디프테리아/파상풍/백일해/소아마비 예방",
-  MMR: "홍역/유행성이하선염/풍진 예방",
-  VAR: "수두 예방 접종",
-  "HepA": "A형 간염 예방",
-  "Influenza": "독감 예방. 유행 시기 전 접종 권장",
-};
-
-function createId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  return `id-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function toDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function toTimeKey(date: Date): string {
-  return date.toTimeString().slice(0, 5);
-}
-
-function toDateTimeKey(date: string, time: string): string {
-  return `${date}T${time}:00`;
-}
-
-function sortByDateTimeAsc<T extends { date: string; time: string }>(rows: T[]): T[] {
-  return [...rows].sort((a, b) =>
-    toDateTimeKey(a.date, a.time).localeCompare(toDateTimeKey(b.date, b.time)),
-  );
-}
-
-function sortByTimeAsc<T extends { time: string }>(rows: T[]): T[] {
-  return [...rows].sort((a, b) => a.time.localeCompare(b.time));
-}
-
-function getDDayLabel(targetDate: string): string {
-  const today = new Date();
-  const todayAtMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const target = new Date(`${targetDate}T00:00:00`);
-  const diffMs = target.getTime() - todayAtMidnight.getTime();
-  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) {
-    return "D-Day";
-  }
-
-  if (diffDays > 0) {
-    return `D-${diffDays}`;
-  }
-
-  return `D+${Math.abs(diffDays)}`;
-}
-
-function formatDurationLabel(totalSeconds: number): string {
-  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
-  const minutes = Math.floor(safeSeconds / 60);
-  const seconds = safeSeconds % 60;
-
-  if (minutes === 0) {
-    return `${seconds}초`;
-  }
-
-  return `${minutes}분 ${String(seconds).padStart(2, "0")}초`;
-}
-
-function escapeCsvCell(value: string): string {
-  if (value.includes(",") || value.includes("\n") || value.includes('"')) {
-    return `"${value.replaceAll('"', '""')}"`;
-  }
-
-  return value;
-}
-
-function createInitialPlannerState(): PlannerState {
-  const now = new Date();
-  const tomorrow = new Date(now);
-  tomorrow.setDate(now.getDate() + 1);
-
-  const today = toDateKey(now);
-
-  return {
-    guardianName: "보호자",
-    recipientName: "아기",
-    recipientType: "child",
-    ageMonths: 23,
-    elderLargeText: true,
-    activities: sortByDateTimeAsc<ActivityEntry>([
-      {
-        id: createId(),
-        date: today,
-        time: "07:40",
-        category: "meal",
-        title: "아침 이유식",
-        notes: "150ml 섭취",
-      },
-      {
-        id: createId(),
-        date: today,
-        time: "09:05",
-        category: "daycare_dropoff",
-        title: "어린이집 등원",
-        notes: "가방/여벌옷 전달",
-      },
-      {
-        id: createId(),
-        date: today,
-        time: "10:30",
-        category: "snack",
-        title: "바나나 간식",
-        notes: "반 개 섭취",
-      },
-      {
-        id: createId(),
-        date: today,
-        time: "11:15",
-        category: "diaper",
-        title: "기저귀 교체(소변)",
-        notes: "발진 없음",
-      },
-      {
-        id: createId(),
-        date: today,
-        time: "13:20",
-        category: "nap",
-        title: "낮잠",
-        notes: "약 1시간 20분",
-      },
-      {
-        id: createId(),
-        date: today,
-        time: "16:45",
-        category: "daycare_pickup",
-        title: "어린이집 하원",
-        notes: "하원 후 간식 예정",
-      },
-      {
-        id: createId(),
-        date: today,
-        time: "20:00",
-        category: "medication",
-        title: "감기약",
-        notes: "2.5ml 복용",
-      },
-      {
-        id: createId(),
-        date: today,
-        time: "20:40",
-        category: "temperature",
-        title: "체온 측정",
-        notes: "37.4°C",
-      },
-    ]),
-    appointments: [
-      {
-        id: createId(),
-        date: toDateKey(tomorrow),
-        time: "10:30",
-        kind: "vaccine",
-        title: "MMR 1차",
-        description: VACCINE_HELP.MMR,
-        completed: false,
-      },
-      {
-        id: createId(),
-        date: toDateKey(tomorrow),
-        time: "15:00",
-        kind: "hospital",
-        title: "소아과 진료",
-        description: "기침/코감기 경과 확인",
-        completed: false,
-      },
-    ],
-    vaccineRecords: [
-      {
-        id: createId(),
-        name: "BCG",
-        date: "2024-05-10",
-        note: "이상 반응 없음",
-      },
-      {
-        id: createId(),
-        name: "DTaP-IPV 1차",
-        date: "2024-07-12",
-        note: "당일 미열",
-      },
-    ],
-    medicationRoutines: [
-      {
-        id: createId(),
-        name: "아침 혈압약",
-        dosage: "1정",
-        time: "08:00",
-        note: "식후 복용",
-        takenDates: [],
-      },
-      {
-        id: createId(),
-        name: "저녁 당뇨약",
-        dosage: "1정",
-        time: "20:00",
-        note: "복용 후 혈당 체크",
-        takenDates: [],
-      },
-    ],
-    schedules: {
-      weekday: [
-        { id: createId(), time: "07:30", label: "아침 식사" },
-        { id: createId(), time: "09:00", label: "어린이집 등원" },
-        { id: createId(), time: "12:00", label: "점심" },
-        { id: createId(), time: "13:00", label: "낮잠" },
-        { id: createId(), time: "17:00", label: "하원" },
-      ],
-      weekend: [
-        { id: createId(), time: "08:30", label: "아침 식사" },
-        { id: createId(), time: "11:30", label: "공원 산책" },
-        { id: createId(), time: "13:00", label: "낮잠" },
-      ],
-    },
-  };
-}
-
-function loadPlannerState(): PlannerState {
-  const fallback = createInitialPlannerState();
-
-  if (typeof window === "undefined") {
-    return fallback;
-  }
-
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-
-  if (!raw) {
-    return fallback;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<PlannerState>;
-
-    return {
-      guardianName: parsed.guardianName ?? fallback.guardianName,
-      recipientName: parsed.recipientName ?? fallback.recipientName,
-      recipientType: parsed.recipientType ?? fallback.recipientType,
-      ageMonths: parsed.ageMonths ?? fallback.ageMonths,
-      elderLargeText: parsed.elderLargeText ?? fallback.elderLargeText,
-      activities: Array.isArray(parsed.activities)
-        ? parsed.activities
-        : fallback.activities,
-      appointments: Array.isArray(parsed.appointments)
-        ? parsed.appointments
-        : fallback.appointments,
-      vaccineRecords: Array.isArray(parsed.vaccineRecords)
-        ? parsed.vaccineRecords
-        : fallback.vaccineRecords,
-      medicationRoutines: Array.isArray(parsed.medicationRoutines)
-        ? parsed.medicationRoutines.map((routine) => ({
-            ...routine,
-            takenDates: Array.isArray(routine.takenDates) ? routine.takenDates : [],
-          }))
-        : fallback.medicationRoutines,
-      schedules: {
-        weekday:
-          parsed.schedules && Array.isArray(parsed.schedules.weekday)
-            ? parsed.schedules.weekday
-            : fallback.schedules.weekday,
-        weekend:
-          parsed.schedules && Array.isArray(parsed.schedules.weekend)
-            ? parsed.schedules.weekend
-            : fallback.schedules.weekend,
-      },
-    };
-  } catch {
-    return fallback;
-  }
-}
-
-function getAvailableCategories(recipientType: RecipientType): ActivityCategory[] {
-  return (Object.keys(CATEGORY_META) as ActivityCategory[]).filter((category) =>
-    CATEGORY_META[category].recipientTypes.includes(recipientType),
-  );
-}
-
-function getCalendarGrid(year: number, monthIndex: number): Array<{
-  date: string;
-  day: number;
-  inMonth: boolean;
-}> {
-  const firstDay = new Date(year, monthIndex, 1);
-  const firstWeekday = firstDay.getDay();
-  const gridStart = new Date(year, monthIndex, 1 - firstWeekday);
-
-  return Array.from({ length: 42 }, (_, index) => {
-    const current = new Date(gridStart);
-    current.setDate(gridStart.getDate() + index);
-
-    return {
-      date: toDateKey(current),
-      day: current.getDate(),
-      inMonth: current.getMonth() === monthIndex,
-    };
-  });
-}
+  FeedingType,
+  PlannerState,
+  PlannerTab,
+  RecipientType,
+  ScheduleType,
+} from "@/app/planner/types";
+import {
+  createId,
+  createInitialPlannerState,
+  escapeCsvCell,
+  formatDurationLabel,
+  getAvailableCategories,
+  getCalendarGrid,
+  getDDayLabel,
+  loadPlannerState,
+  sortByDateTimeAsc,
+  sortByTimeAsc,
+  toDateKey,
+  toTimeKey,
+} from "@/app/planner/utils";
 
 export function PlannerClient() {
   const [planner, setPlanner] = useState<PlannerState>(loadPlannerState);
@@ -549,6 +101,15 @@ export function PlannerClient() {
   } | null>(null);
 
   const [timerNow, setTimerNow] = useState<number>(() => Date.now());
+  const [quickActionsExpanded, setQuickActionsExpanded] = useState<boolean>(() => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+
+    return window.innerWidth >= 768;
+  });
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -569,6 +130,27 @@ export function PlannerClient() {
 
     return () => window.clearInterval(intervalId);
   }, [activeTimer]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        window.clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const triggerToast = (message: string) => {
+    setToastMessage(message);
+
+    if (toastTimeoutRef.current) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
+
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimeoutRef.current = null;
+    }, 3000);
+  };
 
   const availableCategories = useMemo(
     () => getAvailableCategories(planner.recipientType),
@@ -593,19 +175,7 @@ export function PlannerClient() {
         acc[entry.category] = (acc[entry.category] ?? 0) + 1;
         return acc;
       },
-      {
-        meal: 0,
-        snack: 0,
-        nap: 0,
-        diaper: 0,
-        daycare_dropoff: 0,
-        daycare_pickup: 0,
-        medication: 0,
-        temperature: 0,
-        hospital: 0,
-        vaccine_shot: 0,
-        vaccine_booking: 0,
-      },
+      { ...EMPTY_CATEGORY_COUNTS },
     );
   }, [dayActivities]);
 
@@ -700,31 +270,11 @@ export function PlannerClient() {
   ).length;
 
   const daySummary = useMemo(() => {
-    const byCategory = dayActivities.reduce<Record<ActivityCategory, number>>(
-      (acc, entry) => {
-        acc[entry.category] = (acc[entry.category] ?? 0) + 1;
-        return acc;
-      },
-      {
-        meal: 0,
-        snack: 0,
-        nap: 0,
-        diaper: 0,
-        daycare_dropoff: 0,
-        daycare_pickup: 0,
-        medication: 0,
-        temperature: 0,
-        hospital: 0,
-        vaccine_shot: 0,
-        vaccine_booking: 0,
-      },
-    );
-
     return {
       total: dayActivities.length,
-      byCategory,
+      byCategory: eventCounts,
     };
-  }, [dayActivities]);
+  }, [dayActivities.length, eventCounts]);
 
   const weekSummary = useMemo(() => {
     const selected = new Date(`${selectedDate}T00:00:00`);
@@ -789,15 +339,16 @@ export function PlannerClient() {
     ? Math.max(0, Math.floor((timerNow - activeTimer.startedAt) / 1000))
     : 0;
 
-  const visibleTabs =
-    planner.recipientType === "elder"
-      ? PLANNER_TABS.filter((tab) => ["today", "health", "schedule"].includes(tab.id))
-      : PLANNER_TABS;
+  const visibleTabs = useMemo(
+    () =>
+      planner.recipientType === "elder"
+        ? PLANNER_TABS.filter((tab) => ["today", "health", "schedule"].includes(tab.id))
+        : PLANNER_TABS,
+    [planner.recipientType],
+  );
 
   const effectiveTab: PlannerTab =
-    planner.recipientType === "elder" && ["record", "report"].includes(activeTab)
-      ? "today"
-      : activeTab;
+    visibleTabs.find((tab) => tab.id === activeTab)?.id ?? "today";
 
   const nextTodoItems = useMemo(() => {
     const todos: Array<{
@@ -904,6 +455,8 @@ export function PlannerClient() {
       title,
       notes,
     }));
+
+    triggerToast(`✅ ${CATEGORY_META[category].label} 기록 완료`);
   };
 
   const addDetailedFeeding = () => {
@@ -1280,6 +833,9 @@ export function PlannerClient() {
     }));
   }, [donutTotal, eventCounts]);
 
+  const getTabId = (tabId: PlannerTab) => `planner-tab-${tabId}`;
+  const getPanelId = (tabId: PlannerTab) => `planner-panel-${tabId}`;
+
   return (
     <div
       className={`space-y-6 ${
@@ -1306,7 +862,7 @@ export function PlannerClient() {
         </div>
       </section>
 
-      <section className="sticky top-0 z-20 space-y-3 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur">
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur md:sticky md:top-0 md:z-20 md:p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm text-slate-500">오늘의 대상자</p>
@@ -1375,70 +931,104 @@ export function PlannerClient() {
           </label>
         ) : null}
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {planner.recipientType === "child" ? (
-            <>
-              <button
-                type="button"
-                onClick={() => addQuickActivity("meal", "빠른기록 · 식사")}
-                className="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm text-sky-700"
-              >
-                🍼 식사
-              </button>
-              <button
-                type="button"
-                onClick={() => addQuickActivity("nap", "빠른기록 · 수면")}
-                className="shrink-0 rounded-full border border-violet-300 bg-violet-50 px-3 py-1.5 text-sm text-violet-700"
-              >
-                😴 수면
-              </button>
-              <button
-                type="button"
-                onClick={() => addQuickActivity("diaper", "빠른기록 · 기저귀(소변)")}
-                className="shrink-0 rounded-full border border-lime-300 bg-lime-50 px-3 py-1.5 text-sm text-lime-700"
-              >
-                🩲 기저귀
-              </button>
-              <button
-                type="button"
-                onClick={() => addQuickActivity("temperature", "빠른기록 · 체온 측정", `${temperatureDraft.celsius}°C`) }
-                className="shrink-0 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-700"
-              >
-                🌡️ 체온
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => addQuickActivity("meal", "빠른기록 · 식사")}
-                className="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm text-sky-700"
-              >
-                🍚 식사
-              </button>
-              <button
-                type="button"
-                onClick={() => addQuickActivity("medication", "빠른기록 · 복약 완료")}
-                className="shrink-0 rounded-full border border-pink-300 bg-pink-50 px-3 py-1.5 text-sm text-pink-700"
-              >
-                💊 복약
-              </button>
-              <button
-                type="button"
-                onClick={() => addQuickActivity("hospital", "빠른기록 · 병원 방문")}
-                className="shrink-0 rounded-full border border-rose-300 bg-rose-50 px-3 py-1.5 text-sm text-rose-700"
-              >
-                🏥 병원
-              </button>
-            </>
-          )}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium text-slate-700">빠른기록</p>
+            <button
+              type="button"
+              onClick={() => setQuickActionsExpanded((prev) => !prev)}
+              aria-expanded={quickActionsExpanded}
+              aria-controls="planner-quick-actions"
+              className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+            >
+              {quickActionsExpanded ? "접기" : "펼치기"}
+            </button>
+          </div>
+
+          {quickActionsExpanded ? (
+            <div id="planner-quick-actions" className="mt-2 flex gap-2 overflow-x-auto pb-1">
+              {planner.recipientType === "child" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("meal", "빠른기록 · 식사")}
+                    aria-label="빠른기록 식사"
+                    className="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-700"
+                  >
+                    🍼 식사
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("nap", "빠른기록 · 수면")}
+                    aria-label="빠른기록 수면"
+                    className="shrink-0 rounded-full border border-violet-300 bg-violet-50 px-3 py-2 text-sm text-violet-700"
+                  >
+                    😴 수면
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("diaper", "빠른기록 · 기저귀(소변)")}
+                    aria-label="빠른기록 기저귀"
+                    className="shrink-0 rounded-full border border-lime-300 bg-lime-50 px-3 py-2 text-sm text-lime-700"
+                  >
+                    🩲 기저귀
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      addQuickActivity("temperature", "빠른기록 · 체온 측정", `${temperatureDraft.celsius}°C`)
+                    }
+                    aria-label="빠른기록 체온"
+                    className="shrink-0 rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700"
+                  >
+                    🌡️ 체온
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("meal", "빠른기록 · 식사")}
+                    aria-label="빠른기록 식사"
+                    className="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-700"
+                  >
+                    🍚 식사
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("medication", "빠른기록 · 복약 완료")}
+                    aria-label="빠른기록 복약"
+                    className="shrink-0 rounded-full border border-pink-300 bg-pink-50 px-3 py-2 text-sm text-pink-700"
+                  >
+                    💊 복약
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("hospital", "빠른기록 · 병원 방문")}
+                    aria-label="빠른기록 병원 방문"
+                    className="shrink-0 rounded-full border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+                  >
+                    🏥 병원
+                  </button>
+                </>
+              )}
+            </div>
+          ) : null}
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div
+          className="flex gap-2 overflow-x-auto pb-1 md:flex-wrap"
+          role="tablist"
+          aria-label="플래너 탭"
+        >
           {visibleTabs.map((tab) => (
             <button
               key={tab.id}
+              id={getTabId(tab.id)}
               type="button"
+              role="tab"
+              aria-selected={effectiveTab === tab.id}
+              aria-controls={getPanelId(tab.id)}
               onClick={() => setActiveTab(tab.id)}
               className={`rounded-full px-4 py-2 text-sm font-medium ${
                 effectiveTab === tab.id
@@ -2809,11 +2399,19 @@ export function PlannerClient() {
       </section>
       ) : null}
 
+      {toastMessage ? (
+        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+          <div className="max-w-sm rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg">
+            {toastMessage}
+          </div>
+        </div>
+      ) : null}
+
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
         <h3 className="text-base font-semibold text-slate-900">현재 사용 가능한 기능</h3>
         <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-700">
           <li>탭 기반 구조(오늘/기록/건강/일정/리포트)로 화면 분리</li>
-          <li>상단 고정 바(대상자 요약 + 날짜 + 원탭 빠른기록 + 설정 이동)</li>
+          <li>상단 요약 바(모바일 비고정 / 데스크톱 고정)</li>
           <li>원탭 빠른기록(식사/수면/기저귀/복약/체온/등하원/병원)</li>
           <li>수유 세분화 입력(모유 좌/우, 분유, 이유식)</li>
           <li>수유/수면 타이머(시작/종료 후 소요시간 자동 기록)</li>
