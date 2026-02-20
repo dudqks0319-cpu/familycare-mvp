@@ -188,9 +188,21 @@ export default async function FridgePage({ searchParams }: FridgePageProps) {
   const configured = isSupabaseConfigured();
   const session = await getAuthSessionFromCookie();
 
-  const dashboardData = configured && session
-    ? await getFridgeDashboardData(session)
-    : { items: [], recommendations: [] };
+  let dashboardData: Awaited<ReturnType<typeof getFridgeDashboardData>> = {
+    items: [],
+    recommendations: [],
+  };
+  let dashboardLoadError = "";
+
+  if (configured && session) {
+    try {
+      dashboardData = await getFridgeDashboardData(session);
+    } catch (loadError) {
+      dashboardLoadError = loadError instanceof Error
+        ? loadError.message
+        : "냉장고 데이터를 불러오지 못했습니다.";
+    }
+  }
 
   const expiringSoonCount = dashboardData.items.filter((item) => {
     const meta = getExpiryMeta(item);
@@ -248,6 +260,14 @@ export default async function FridgePage({ searchParams }: FridgePageProps) {
           {error ? (
             <section className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-900">
               {error}
+            </section>
+          ) : null}
+
+          {dashboardLoadError ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              {dashboardLoadError}
+              <br />
+              Supabase SQL Editor에서 `202602201955_fridge_mvp.sql` 마이그레이션을 먼저 실행해 주세요.
             </section>
           ) : null}
         </div>
