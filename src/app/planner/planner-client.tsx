@@ -51,14 +51,25 @@ type ScheduleItem = {
   label: string;
 };
 
+type MedicationRoutineItem = {
+  id: string;
+  name: string;
+  dosage: string;
+  time: string;
+  note: string;
+  takenDates: string[];
+};
+
 type PlannerState = {
   guardianName: string;
   recipientName: string;
   recipientType: RecipientType;
   ageMonths: number;
+  elderLargeText: boolean;
   activities: ActivityEntry[];
   appointments: Appointment[];
   vaccineRecords: VaccineRecord[];
+  medicationRoutines: MedicationRoutineItem[];
   schedules: {
     weekday: ScheduleItem[];
     weekend: ScheduleItem[];
@@ -214,6 +225,24 @@ function sortByTimeAsc<T extends { time: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => a.time.localeCompare(b.time));
 }
 
+function getDDayLabel(targetDate: string): string {
+  const today = new Date();
+  const todayAtMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const target = new Date(`${targetDate}T00:00:00`);
+  const diffMs = target.getTime() - todayAtMidnight.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) {
+    return "D-Day";
+  }
+
+  if (diffDays > 0) {
+    return `D-${diffDays}`;
+  }
+
+  return `D+${Math.abs(diffDays)}`;
+}
+
 function createInitialPlannerState(): PlannerState {
   const now = new Date();
   const tomorrow = new Date(now);
@@ -226,6 +255,7 @@ function createInitialPlannerState(): PlannerState {
     recipientName: "아기",
     recipientType: "child",
     ageMonths: 23,
+    elderLargeText: true,
     activities: sortByDateTimeAsc<ActivityEntry>([
       {
         id: createId(),
@@ -310,6 +340,24 @@ function createInitialPlannerState(): PlannerState {
         note: "당일 미열",
       },
     ],
+    medicationRoutines: [
+      {
+        id: createId(),
+        name: "아침 혈압약",
+        dosage: "1정",
+        time: "08:00",
+        note: "식후 복용",
+        takenDates: [],
+      },
+      {
+        id: createId(),
+        name: "저녁 당뇨약",
+        dosage: "1정",
+        time: "20:00",
+        note: "복용 후 혈당 체크",
+        takenDates: [],
+      },
+    ],
     schedules: {
       weekday: [
         { id: createId(), time: "07:30", label: "아침 식사" },
@@ -348,6 +396,7 @@ function loadPlannerState(): PlannerState {
       recipientName: parsed.recipientName ?? fallback.recipientName,
       recipientType: parsed.recipientType ?? fallback.recipientType,
       ageMonths: parsed.ageMonths ?? fallback.ageMonths,
+      elderLargeText: parsed.elderLargeText ?? fallback.elderLargeText,
       activities: Array.isArray(parsed.activities)
         ? parsed.activities
         : fallback.activities,
@@ -357,6 +406,12 @@ function loadPlannerState(): PlannerState {
       vaccineRecords: Array.isArray(parsed.vaccineRecords)
         ? parsed.vaccineRecords
         : fallback.vaccineRecords,
+      medicationRoutines: Array.isArray(parsed.medicationRoutines)
+        ? parsed.medicationRoutines.map((routine) => ({
+            ...routine,
+            takenDates: Array.isArray(routine.takenDates) ? routine.takenDates : [],
+          }))
+        : fallback.medicationRoutines,
       schedules: {
         weekday:
           parsed.schedules && Array.isArray(parsed.schedules.weekday)
@@ -442,6 +497,13 @@ export function PlannerClient() {
     note: "",
   });
 
+  const [medicationRoutineDraft, setMedicationRoutineDraft] = useState({
+    name: "",
+    dosage: "1회",
+    time: "08:00",
+    note: "",
+  });
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -494,8 +556,11 @@ export function PlannerClient() {
     [planner.appointments],
   );
 
-  const nextAppointment = useMemo(
-    () => sortedAppointments.find((appointment) => !appointment.completed) ?? null,
+  const nextVaccineAppointment = useMemo(
+    () =>
+      sortedAppointments.find(
+        (appointment) => appointment.kind === "vaccine" && !appointment.completed,
+      ) ?? null,
     [sortedAppointments],
   );
 
@@ -567,6 +632,15 @@ export function PlannerClient() {
     (appointment) => appointment.kind === "hospital",
   );
 
+  const medicationRoutines = useMemo(
+    () => sortByTimeAsc(planner.medicationRoutines),
+    [planner.medicationRoutines],
+  );
+
+  const takenRoutineCount = medicationRoutines.filter((item) =>
+    item.takenDates.includes(selectedDate),
+  ).length;
+
   const addActivity = () => {
     const title = activityDraft.title.trim() || CATEGORY_META[selectedCategory].label;
 
@@ -590,6 +664,39 @@ export function PlannerClient() {
       ...prev,
       title: "",
       notes: "",
+    }));
+  };
+
+  const addQuickActivity = (
+    category: ActivityCategory,
+    title: string,
+    notes = "",
+  ) => {
+    if (!CATEGORY_META[category].recipientTypes.includes(planner.recipientType)) {
+      return;
+    }
+
+    setPlanner((prev) => ({
+      ...prev,
+      activities: sortByDateTimeAsc([
+        ...prev.activities,
+        {
+          id: createId(),
+          date: selectedDate,
+          time: toTimeKey(new Date()),
+          category,
+          title,
+          notes,
+        },
+      ]),
+    }));
+
+    setActivityDraft((prev) => ({
+      ...prev,
+      date: selectedDate,
+      category,
+      title,
+      notes,
     }));
   };
 
@@ -630,6 +737,72 @@ export function PlannerClient() {
         ...prev.schedules,
         [type]: prev.schedules[type].filter((item) => item.id !== id),
       },
+    }));
+  };
+
+  const copyScheduleTemplate = (from: ScheduleType, to: ScheduleType) => {
+    setPlanner((prev) => ({
+      ...prev,
+      schedules: {
+        ...prev.schedules,
+        [to]: prev.schedules[from].map((item) => ({
+          ...item,
+          id: createId(),
+        })),
+      },
+    }));
+  };
+
+  const addMedicationRoutine = () => {
+    if (!medicationRoutineDraft.name.trim()) {
+      return;
+    }
+
+    setPlanner((prev) => ({
+      ...prev,
+      medicationRoutines: sortByTimeAsc([
+        ...prev.medicationRoutines,
+        {
+          id: createId(),
+          name: medicationRoutineDraft.name.trim(),
+          dosage: medicationRoutineDraft.dosage.trim(),
+          time: medicationRoutineDraft.time,
+          note: medicationRoutineDraft.note.trim(),
+          takenDates: [],
+        },
+      ]),
+    }));
+
+    setMedicationRoutineDraft((prev) => ({
+      ...prev,
+      name: "",
+      note: "",
+    }));
+  };
+
+  const toggleMedicationRoutineTaken = (routineId: string) => {
+    setPlanner((prev) => ({
+      ...prev,
+      medicationRoutines: prev.medicationRoutines.map((routine) => {
+        if (routine.id !== routineId) {
+          return routine;
+        }
+
+        const exists = routine.takenDates.includes(selectedDate);
+        return {
+          ...routine,
+          takenDates: exists
+            ? routine.takenDates.filter((date) => date !== selectedDate)
+            : [...routine.takenDates, selectedDate],
+        };
+      }),
+    }));
+  };
+
+  const removeMedicationRoutine = (routineId: string) => {
+    setPlanner((prev) => ({
+      ...prev,
+      medicationRoutines: prev.medicationRoutines.filter((routine) => routine.id !== routineId),
     }));
   };
 
@@ -779,7 +952,13 @@ export function PlannerClient() {
   }, [donutTotal, eventCounts]);
 
   return (
-    <div className="space-y-6">
+    <div
+      className={`space-y-6 ${
+        planner.recipientType === "elder" && planner.elderLargeText
+          ? "text-[17px] leading-7"
+          : ""
+      }`}
+    >
       <section className="rounded-2xl border border-sky-200 bg-sky-50 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -870,6 +1049,20 @@ export function PlannerClient() {
             />
           </label>
         </div>
+
+        {planner.recipientType === "elder" ? (
+          <label className="mt-4 flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={planner.elderLargeText}
+              onChange={(event) =>
+                setPlanner((prev) => ({ ...prev, elderLargeText: event.target.checked }))
+              }
+              className="h-4 w-4"
+            />
+            어르신 가독성 모드(큰 글씨) 사용
+          </label>
+        ) : null}
 
         <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
           <p>
@@ -1046,32 +1239,58 @@ export function PlannerClient() {
                 <>
                   <button
                     type="button"
-                    onClick={() =>
-                      setActivityDraft((prev) => ({
-                        ...prev,
-                        category: "daycare_dropoff",
-                        title: "어린이집 등원",
-                      }))
-                    }
-                    className="rounded-lg border border-emerald-300 px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50"
+                    onClick={() => addQuickActivity("meal", "빠른기록 · 식사")}
+                    className="rounded-lg border border-sky-300 px-3 py-2 text-sm text-sky-700 hover:bg-sky-50"
                   >
-                    등원 빠른입력
+                    식사 원탭
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      setActivityDraft((prev) => ({
-                        ...prev,
-                        category: "daycare_pickup",
-                        title: "어린이집 하원",
-                      }))
-                    }
+                    onClick={() => addQuickActivity("nap", "빠른기록 · 낮잠")}
+                    className="rounded-lg border border-violet-300 px-3 py-2 text-sm text-violet-700 hover:bg-violet-50"
+                  >
+                    낮잠 원탭
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("daycare_dropoff", "빠른기록 · 어린이집 등원")}
+                    className="rounded-lg border border-emerald-300 px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50"
+                  >
+                    등원 원탭
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("daycare_pickup", "빠른기록 · 어린이집 하원")}
                     className="rounded-lg border border-teal-300 px-3 py-2 text-sm text-teal-700 hover:bg-teal-50"
                   >
-                    하원 빠른입력
+                    하원 원탭
                   </button>
                 </>
-              ) : null}
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("meal", "빠른기록 · 식사")}
+                    className="rounded-lg border border-sky-300 px-3 py-2 text-sm text-sky-700 hover:bg-sky-50"
+                  >
+                    식사 원탭
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("medication", "빠른기록 · 복약 완료")}
+                    className="rounded-lg border border-pink-300 px-3 py-2 text-sm text-pink-700 hover:bg-pink-50"
+                  >
+                    복약 원탭
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addQuickActivity("hospital", "빠른기록 · 병원 방문")}
+                    className="rounded-lg border border-rose-300 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50"
+                  >
+                    병원 원탭
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1139,25 +1358,150 @@ export function PlannerClient() {
       <section id="medication" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-900">복약 관리</h3>
         <p className="mt-1 text-sm text-slate-600">
-          활동기록에서 약 복용 항목만 추려서 확인합니다.
+          복약 루틴 체크리스트와 활동기록 기반 복약 로그를 함께 관리합니다.
         </p>
 
-        <ul className="mt-4 space-y-2 text-sm text-slate-700">
-          {medicationEntries.length === 0 ? (
-            <li className="rounded-lg border border-dashed border-slate-300 p-3 text-slate-500">
-              오늘 복약 기록이 없습니다.
-            </li>
-          ) : (
-            medicationEntries.map((entry) => (
-              <li key={entry.id} className="rounded-lg border border-slate-200 p-3">
-                <span className="font-semibold text-slate-900">{entry.time}</span>
-                <span className="mx-2 text-slate-400">·</span>
-                <span>{entry.title}</span>
-                {entry.notes ? <p className="mt-1 text-xs text-slate-500">{entry.notes}</p> : null}
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-slate-900">{selectedDate} 복약 체크리스트</p>
+              <span className="rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-700">
+                완료 {takenRoutineCount}/{medicationRoutines.length}
+              </span>
+            </div>
+
+            <ul className="mt-3 space-y-2 text-sm text-slate-700">
+              {medicationRoutines.length === 0 ? (
+                <li className="rounded-lg border border-dashed border-slate-300 p-3 text-slate-500">
+                  등록된 복약 루틴이 없습니다.
+                </li>
+              ) : (
+                medicationRoutines.map((routine) => {
+                  const taken = routine.takenDates.includes(selectedDate);
+
+                  return (
+                    <li
+                      key={routine.id}
+                      className={`rounded-lg border p-3 ${
+                        taken ? "border-emerald-200 bg-emerald-50" : "border-slate-200"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-slate-900">
+                            {routine.time} · {routine.name}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {routine.dosage || "용량 미기재"}
+                            {routine.note ? ` · ${routine.note}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleMedicationRoutineTaken(routine.id)}
+                            className={`rounded px-2 py-1 text-xs font-semibold ${
+                              taken
+                                ? "bg-emerald-600 text-white"
+                                : "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            {taken ? "복용 완료" : "완료 처리"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeMedicationRoutine(routine.id)}
+                            className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 p-4">
+            <p className="text-sm font-semibold text-slate-900">복약 루틴 추가</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="text-sm text-slate-700 md:col-span-2">
+                약 이름
+                <input
+                  value={medicationRoutineDraft.name}
+                  onChange={(event) =>
+                    setMedicationRoutineDraft((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  placeholder="예: 아침 혈압약"
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm text-slate-700">
+                복용 시간
+                <input
+                  type="time"
+                  value={medicationRoutineDraft.time}
+                  onChange={(event) =>
+                    setMedicationRoutineDraft((prev) => ({ ...prev, time: event.target.value }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm text-slate-700">
+                용량
+                <input
+                  value={medicationRoutineDraft.dosage}
+                  onChange={(event) =>
+                    setMedicationRoutineDraft((prev) => ({ ...prev, dosage: event.target.value }))
+                  }
+                  placeholder="예: 1정"
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm text-slate-700 md:col-span-2">
+                메모
+                <input
+                  value={medicationRoutineDraft.note}
+                  onChange={(event) =>
+                    setMedicationRoutineDraft((prev) => ({ ...prev, note: event.target.value }))
+                  }
+                  placeholder="예: 식후 복용"
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              onClick={addMedicationRoutine}
+              className="mt-3 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+            >
+              루틴 추가
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-slate-200 p-4">
+          <p className="text-sm font-semibold text-slate-900">활동기록 기반 복약 로그</p>
+          <ul className="mt-3 space-y-2 text-sm text-slate-700">
+            {medicationEntries.length === 0 ? (
+              <li className="rounded-lg border border-dashed border-slate-300 p-3 text-slate-500">
+                오늘 복약 기록이 없습니다.
               </li>
-            ))
-          )}
-        </ul>
+            ) : (
+              medicationEntries.map((entry) => (
+                <li key={entry.id} className="rounded-lg border border-slate-200 p-3">
+                  <span className="font-semibold text-slate-900">{entry.time}</span>
+                  <span className="mx-2 text-slate-400">·</span>
+                  <span>{entry.title}</span>
+                  {entry.notes ? <p className="mt-1 text-xs text-slate-500">{entry.notes}</p> : null}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
       </section>
 
       {planner.recipientType === "elder" ? (
@@ -1378,14 +1722,20 @@ export function PlannerClient() {
 
           <div className="mt-5 rounded-xl border border-slate-200 p-4">
             <p className="text-sm font-semibold text-slate-900">다음 예약</p>
-            {nextAppointment && nextAppointment.kind === "vaccine" ? (
+            {nextVaccineAppointment ? (
               <div className="mt-2 text-sm text-slate-700">
-                <p>
-                  <span className="font-semibold">{nextAppointment.date}</span> {nextAppointment.time}
-                  <span className="mx-2 text-slate-400">·</span>
-                  {nextAppointment.title}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">{nextAppointment.description}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p>
+                    <span className="font-semibold">{nextVaccineAppointment.date}</span>{" "}
+                    {nextVaccineAppointment.time}
+                    <span className="mx-2 text-slate-400">·</span>
+                    {nextVaccineAppointment.title}
+                  </p>
+                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+                    {getDDayLabel(nextVaccineAppointment.date)}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">{nextVaccineAppointment.description}</p>
               </div>
             ) : (
               <p className="mt-2 text-sm text-slate-500">등록된 접종 예약이 없습니다.</p>
@@ -1456,7 +1806,24 @@ export function PlannerClient() {
           템플릿이 적용됩니다.
         </p>
 
-        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => copyScheduleTemplate("weekday", "weekend")}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+          >
+            평일 → 주말 복사
+          </button>
+          <button
+            type="button"
+            onClick={() => copyScheduleTemplate("weekend", "weekday")}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+          >
+            주말 → 평일 복사
+          </button>
+        </div>
+
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-sm font-semibold text-slate-900">{selectedDate} 적용 일정</p>
           <ul className="mt-2 space-y-1 text-sm text-slate-700">
             {activeSchedule.length === 0 ? (
@@ -1642,10 +2009,12 @@ export function PlannerClient() {
         <h3 className="text-base font-semibold text-slate-900">현재 사용 가능한 기능</h3>
         <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-700">
           <li>보호자/피보호자 정보 입력 + 대상 유형(영유아/어르신) 전환</li>
-          <li>24시간 활동 기록 입력(식사/간식/낮잠/등원·하원/복약/병원/접종)</li>
+          <li>원탭 빠른기록(식사/낮잠/복약/등하원/병원) + 24시간 활동 기록</li>
+          <li>어르신 가독성 모드(큰 글씨) 지원</li>
+          <li>복약 루틴 체크리스트 + 날짜별 복용 완료 처리</li>
           <li>동그란 도넛 차트로 일일 활동 분포 시각화</li>
-          <li>접종 예약 + 접종 완료 이력 + 다음 예약 설명 확인</li>
-          <li>평일/주말 루틴 분리 관리</li>
+          <li>접종 예약 + 접종 완료 이력 + 다음 접종 D-day 카드</li>
+          <li>평일/주말 루틴 분리 + 템플릿 복사</li>
           <li>달력형 날짜별 이벤트 확인</li>
           <li>비회원 상태에서도 전체 기능 테스트 가능(브라우저 저장)</li>
         </ul>

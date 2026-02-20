@@ -28,7 +28,7 @@
 - `/auth` : 이메일 로그인/회원가입 + Google/Kakao 소셜 로그인
 - `/auth/callback` : OAuth 콜백 처리 라우트
 - `/dashboard` : 돌봄 운영 대시보드
-- `/planner` : 영유아/어르신 맞춤 돌봄 플래너 (24시간 기록/도넛 차트/달력/주중·주말)
+- `/planner` : 영유아/어르신 맞춤 돌봄 플래너 (원탭 기록/복약 체크리스트/접종 D-day/도넛 차트/달력/주중·주말)
 - `/invite` : 이메일 초대 링크 수락
 - `/settings` : 계정/프로필 설정
 - `/api/dashboard` : 대시보드 JSON (테스트 모드/인증 모드)
@@ -87,6 +87,10 @@ npm test
 npm run lint
 npm run build
 ```
+
+## 기획 참고
+
+- Opus 리서치 반영 실행 계획: `research/opus-execution-plan-20260220.md`
 
 ## 보안/운영 메모
 
