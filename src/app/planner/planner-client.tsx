@@ -40,6 +40,70 @@ const QUICK_DATE_BUTTONS = [
   { label: "내일", offset: 1 },
 ] as const;
 
+const CHILD_STATUS_ITEMS: Array<{
+  category: ActivityCategory;
+  label: string;
+  emoji: string;
+  circleClass: string;
+}> = [
+  { category: "meal", label: "수유/식사", emoji: "🍼", circleClass: "bg-amber-400" },
+  { category: "diaper", label: "기저귀", emoji: "🩲", circleClass: "bg-lime-400" },
+  { category: "nap", label: "수면", emoji: "😴", circleClass: "bg-violet-400" },
+  { category: "temperature", label: "체온", emoji: "🌡️", circleClass: "bg-rose-400" },
+  { category: "daycare_dropoff", label: "등원", emoji: "🚌", circleClass: "bg-teal-400" },
+];
+
+const ELDER_STATUS_ITEMS: Array<{
+  category: ActivityCategory;
+  label: string;
+  emoji: string;
+  circleClass: string;
+}> = [
+  { category: "meal", label: "식사", emoji: "🍚", circleClass: "bg-amber-400" },
+  { category: "medication", label: "복약", emoji: "💊", circleClass: "bg-fuchsia-400" },
+  { category: "hospital", label: "병원", emoji: "🏥", circleClass: "bg-rose-400" },
+  { category: "temperature", label: "체온", emoji: "🌡️", circleClass: "bg-orange-400" },
+  { category: "nap", label: "휴식", emoji: "🛏️", circleClass: "bg-indigo-400" },
+];
+
+function formatActivityRelative(date: string, time: string): string {
+  const target = new Date(`${date}T${time}:00`);
+
+  if (Number.isNaN(target.getTime())) {
+    return date;
+  }
+
+  const diffMs = Date.now() - target.getTime();
+
+  if (diffMs < 0) {
+    return "방금 전";
+  }
+
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  if (diffMinutes < 1) {
+    return "방금 전";
+  }
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes}분 전`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+
+  if (diffHours < 24) {
+    return `${diffHours}시간 전`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffDays <= 7) {
+    return `${diffDays}일 전`;
+  }
+
+  return date;
+}
+
 export function PlannerClient() {
   const [planner, setPlanner] = useState<PlannerState>(loadPlannerState);
   const [selectedDate, setSelectedDate] = useState<string>(() => toDateKey(new Date()));
@@ -423,6 +487,39 @@ export function PlannerClient() {
     nextVaccineAppointment,
     selectedDate,
   ]);
+
+  const recentActivityByCategory = useMemo(() => {
+    const sorted = [...planner.activities].sort((a, b) =>
+      `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`),
+    );
+
+    const map = new Map<ActivityCategory, { date: string; time: string; title: string }>();
+
+    sorted.forEach((entry) => {
+      if (!map.has(entry.category)) {
+        map.set(entry.category, entry);
+      }
+    });
+
+    return map;
+  }, [planner.activities]);
+
+  const quickStatusItems = useMemo(() => {
+    const presets = planner.recipientType === "child" ? CHILD_STATUS_ITEMS : ELDER_STATUS_ITEMS;
+
+    return presets.map((preset) => {
+      const recent = recentActivityByCategory.get(preset.category);
+
+      return {
+        ...preset,
+        recentText: recent
+          ? `${formatActivityRelative(recent.date, recent.time)} · ${recent.title}`
+          : "기록 없음",
+      };
+    });
+  }, [planner.recipientType, recentActivityByCategory]);
+
+  const ageInDays = Math.max(0, Math.round(planner.ageMonths * 30.4));
 
   const addActivity = () => {
     const title = activityDraft.title.trim() || CATEGORY_META[selectedCategory].label;
@@ -953,7 +1050,7 @@ export function PlannerClient() {
         </div>
       </section>
 
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur md:sticky md:top-0 md:z-20 md:p-4">
+      <section className="space-y-3 rounded-[24px] border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur md:sticky md:top-0 md:z-20 md:p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm text-slate-500">오늘의 대상자</p>
@@ -1042,6 +1139,38 @@ export function PlannerClient() {
           </div>
         </div>
 
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">
+                {planner.ageMonths}개월 · D+{ageInDays}
+              </p>
+              <p className="text-xs text-slate-500">
+                베이비타임 스타일 요약 카드 (최근 기록 기반)
+              </p>
+            </div>
+            <p className="text-xs font-medium text-slate-500">{selectedDate}</p>
+          </div>
+
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            {quickStatusItems.map((item) => (
+              <div
+                key={`${item.category}-${item.label}`}
+                className="min-w-[92px] rounded-2xl border border-white/60 bg-white px-2 py-2 text-center shadow-sm"
+              >
+                <div
+                  className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full text-xl text-white shadow-sm ${item.circleClass}`}
+                  aria-hidden="true"
+                >
+                  {item.emoji}
+                </div>
+                <p className="mt-1 text-xs font-semibold text-slate-800">{item.label}</p>
+                <p className="mt-0.5 min-h-[2rem] text-[11px] leading-4 text-slate-500">{item.recentText}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {planner.recipientType === "elder" ? (
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
             <input
@@ -1069,6 +1198,9 @@ export function PlannerClient() {
               {quickActionsExpanded ? "접기 ▲" : "펼치기 ▼"}
             </button>
           </div>
+          <p className="mt-1 rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
+            [퀵 노트 도움말] 빠른기록 버튼을 누르면 최근 패턴을 더 쉽게 남기실 수 있어요.
+          </p>
 
           {quickActionsExpanded ? (
             <div
@@ -1145,7 +1277,7 @@ export function PlannerClient() {
         </div>
 
         <div
-          className="flex gap-1.5 overflow-x-auto snap-x snap-mandatory pb-1 [-webkit-mask-image:linear-gradient(to_right,black_85%,transparent)] [mask-image:linear-gradient(to_right,black_85%,transparent)] md:flex-wrap md:[-webkit-mask-image:none] md:[mask-image:none]"
+          className="flex gap-1 overflow-x-auto rounded-full border border-slate-200 bg-slate-100 p-1"
           role="tablist"
           aria-label="플래너 탭"
         >
@@ -1167,10 +1299,10 @@ export function PlannerClient() {
                   inline: "center",
                 });
               }}
-              className={`snap-start shrink-0 min-h-[44px] min-w-[64px] rounded-full px-4 py-2.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 ${
+              className={`snap-start shrink-0 min-h-[42px] min-w-[72px] rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 ${
                 effectiveTab === tab.id
-                  ? "bg-slate-900 text-white"
-                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
               }`}
             >
               {tab.label}
@@ -1211,22 +1343,36 @@ export function PlannerClient() {
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">오늘 타임라인</h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">일과표 기록</h3>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                {selectedDate}
+              </span>
+            </div>
             <ul className="mt-3 space-y-2 text-sm text-slate-700">
               {dayActivities.length === 0 ? (
                 <li className="rounded-lg border border-dashed border-slate-300 p-3 text-slate-500">
-                  오늘 기록이 없습니다.
+                  선택한 날짜의 기록이 없습니다.
                 </li>
               ) : (
                 dayActivities.map((entry) => (
                   <li
                     key={entry.id}
-                    className={`rounded-lg border-l-4 p-3 ${CATEGORY_META[entry.category].badgeClass}`}
+                    className="grid grid-cols-[64px_1fr_auto] items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3"
                   >
-                    <p className="font-medium text-slate-900">
-                      {entry.time} · {entry.title}
-                    </p>
-                    {entry.notes ? <p className="mt-1 text-xs text-slate-600">{entry.notes}</p> : null}
+                    <p className="text-base font-semibold text-slate-800">{entry.time}</p>
+                    <div>
+                      <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                        <span
+                          className="inline-block h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: CATEGORY_META[entry.category].color }}
+                        />
+                        {CATEGORY_META[entry.category].label}
+                      </p>
+                      <p className="mt-0.5 text-sm text-slate-800">{entry.title}</p>
+                      {entry.notes ? <p className="mt-1 text-xs text-slate-500">{entry.notes}</p> : null}
+                    </div>
+                    <span className="text-lg text-slate-300">›</span>
                   </li>
                 ))
               )}

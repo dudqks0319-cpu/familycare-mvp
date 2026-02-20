@@ -4,13 +4,15 @@ import { PlannerClient } from "@/app/planner/planner-client";
 
 export default function PlannerPage() {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-6 py-10">
+    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 bg-slate-50 px-4 py-6 md:px-6 md:py-10">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-sky-700">FamilyCare MVP · Care Planner</p>
-          <h1 className="text-3xl font-semibold text-slate-900">돌봄 플래너</h1>
+          <p className="inline-flex rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+            FamilyCare MVP · Care Planner
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold text-slate-900">돌봄 플래너</h1>
           <p className="mt-1 text-sm text-slate-600">
-            영유아/어르신 돌봄 시나리오를 24시간 기준으로 기록하고 시각화합니다.
+            베이비타임 느낌의 모바일 중심 기록 UX로 빠르게 확인하고 입력할 수 있게 개선했습니다.
           </p>
         </div>
 
