@@ -69,6 +69,7 @@ PUBLIC_TEST_MODE=on
    - `supabase/migrations/202602200920_recipient_delete_policy.sql`
    - `supabase/migrations/202602201045_recipient_invites.sql`
    - `supabase/migrations/202602201105_prevent_duplicate_pending_invites.sql`
+   - `supabase/migrations/202602201220_care_planner_domain.sql`
 
 ## Supabase Provider 설정 (Google / Kakao)
 
